@@ -17,6 +17,16 @@ You can explore the interactive presentations for each assignment and the final 
 10. [HW9: Drunken Flowers](https://i6.cims.nyu.edu/~zc2745/graphics/hw9/drunken_flowers.html)
 11. [HW10: Coocoo Clock](https://i6.cims.nyu.edu/~zc2745/graphics/hw10/coocooclock.html)
 
+# How to View Assignments
+
+You can view the assignments in the following ways:
+1. **Online Links**: Click on the provided links above to view the assignments hosted online.  
+2. **Local Viewing**: 
+   - Clone this repository to your local machine.  
+   - Go to the directory for a specific assignment.  
+   - Open the corresponding `.html` file using the **Live Server** extension in VS Code within the assignment directory.  
+
+
 ## Final Project
 
 - [Blossom Chaos](https://i6.cims.nyu.edu/~zc2745/graphics/final_project/blossom_chaos.html)
