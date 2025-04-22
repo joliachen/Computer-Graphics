@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spheres with a Floating Hand</title>
+    <style>
+        body { 
+            margin: 0;
+            background: linear-gradient(to bottom, white, lightyellow, lightpink); /* 白色到浅黄色到浅粉色渐变 */
+        }
+        canvas { display: block; margin: auto; }
+    </style>
+</head>
+<body>
+   <style>
+      body {
+          margin: 0;
+          font-family: Arial, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+      }
+      #content {
+          display: flex;
+          width: 100%;
+          max-width: 1200px;
+          align-items: center;
+      }
+      #canvas1 {
+          border: 1px solid #000;
+          flex-shrink: 0; /* 确保 canvas 不会缩小 */
+      }
+      .text-container {
+          flex-grow: 1;
+          padding-left: 20px;
+      }
+  </style>
+</head>
+<body>
+  <div id="content">
+      <canvas id='canvas1' width=800 height=800></canvas>
+      <div class="text-container">
+          <p>Inspired by 
+              <a href="https://eng.libretexts.org/Bookshelves/Computer_Science/Applied_Programming/Book%3A_Introduction_to_Computer_Graphics_(Eck)/04%3A_OpenGL_1.1-_Light_and_Material/4.02%3A_Light_and_Material_in_OpenGL_1.1#:~:text=Material%20properties%20are%20vertex%20attributes%20in%20that%20same,properties%20is%20stored%2C%20along%20with%20the%20vertex%20coordinates." 
+                 target="_blank">David J. Eck</a>
+          </p>
+          <p>Try hovering your mouse over the top-left, top-right, bottom-left, and bottom-right sections to see the effect!😄</p>
+      </div>
+  </div>
+<script>
+// INITIALIZE GPU PROGRAM
+let start_gl = (canvas, meshData, vertexSize, vertexShader, fragmentShader) => {
+   let gl = canvas.getContext("webgl");
+   let program = gl.createProgram();
+   gl.program = program;
+   let addshader = (type, src) => {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (! gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+         throw "Cannot compile shader:\n\n" + gl.getShaderInfoLog(shader);
+      gl.attachShader(program, shader);
+   };
+   addshader(gl.VERTEX_SHADER  , vertexShader  );
+   addshader(gl.FRAGMENT_SHADER, fragmentShader);
+   gl.linkProgram(program);
+   if (! gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw "Could not link the shader program!";
+
+   gl.useProgram(program);
+
+   // gl.uniform3fv(uLightColorsLocation, flatLightColors); // after activate the containers of shaders, pass the ulightcolor to shaders
+
+   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+   gl.enable(gl.DEPTH_TEST);
+   gl.depthFunc(gl.LEQUAL);
+   let vertexAttribute = (name, size, position) => {
+      let attr = gl.getAttribLocation(program, name);
+      gl.enableVertexAttribArray(attr);
+      gl.vertexAttribPointer(attr, size, gl.FLOAT, false, vertexSize * 4, position * 4);
+   }
+   vertexAttribute('aPos', 3, 0);
+   return gl;
+}
+
+// LOGIC TO TRACK THE CURSOR
+
+let r = canvas1.getBoundingClientRect(), cursor = [0,0,0];
+let setCursor = (e, z) => cursor = [ (e.clientX - r.left) / canvas1.width * 2 - 1,
+                                     1 - (e.clientY - r.top) / canvas1.height * 2,
+                                     z !== undefined ? z : cursor[2] ];
+canvas1.onmousedown = e => setCursor(e, 1);
+canvas1.onmousemove = e => setCursor(e);
+canvas1.onmouseup   = e => setCursor(e, 0);
+
+// TRIANGLE DATA (IN THIS CASE, ONE SQUARE)
+
+let meshData = [
+   { type: 1, mesh: new Float32Array([ -1,1,0, 1,1,0, -1,-1,0, 1,-1,0 ]) },
+];
+
+const NSPHERES = 5;
+
+// VERTEX AND FRAGMENT SHADERS
+let vertexSize = 3;
+let vertexShader = `
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.0);
+      vPos = aPos;
+   }
+`;
+
+let fragmentShader = `
+precision mediump float;
+uniform float uTime, uFL;
+uniform vec3 uCursor;
+uniform vec4 uSpheres[${NSPHERES}];  // [x, y, z, radius] for each sphere
+varying vec3 vPos;
+
+struct Material {
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+};
+
+Material sphereMaterial;
+
+vec3 getBackgroundColor(vec3 pos) {
+    return mix(mix(vec3(1.0, 1.0, 1.0), vec3(1.0, 1.0, 0.88), (pos.y + 1.0) / 2.0),
+               vec3(1.0, 0.88, 0.88), (pos.y + 1.0) / 2.0);
+}
+
+float raySphere(vec3 V, vec3 W, vec3 C, float r) {
+    V -= C;
+    float VV = dot(V, V);
+    float VW = dot(V, W);
+    float d = VW * VW - (VV - r * r);
+    if (d > 0.0)
+        return -VW - sqrt(d);
+    return -1.0;
+}
+
+// Generate a random color based on a seed and index
+vec3 generateLightColor(float seed, int i) {
+    // 基于 seed 生成基础 RGB 颜色
+    float baseRed = fract(sin(seed) * 43758.5453123);
+    float baseGreen = fract(sin(seed + 1.0) * 43758.5453123);
+    float baseBlue = fract(sin(seed + 2.0) * 43758.5453123);
+
+    // 为每个通道增加不同的变化量，使得不同 i 具有更明显的区分度
+    float redShift = fract(sin(float(i) * 2.0 + seed) * 1.5);   // 使用 i 和 seed 生成变化量
+    float greenShift = fract(sin(float(i) * 12.0 + seed + 1.0) * 1.5);
+    float blueShift = fract(sin(float(i) * 200.0 + seed + 2.0) * 1.5);
+
+    // 对 RGB 值进行放大，以增加不同 i 下的区分度
+    baseRed = clamp(baseRed + redShift * 1.0, 0.0, 1.0);
+    baseGreen = clamp(baseGreen + greenShift * 1.0, 0.0, 1.0);
+    baseBlue = clamp(baseBlue + blueShift * 1.0, 0.0, 1.0);
+
+    // 返回调整后的颜色
+    return vec3(baseRed, baseGreen, baseBlue);
+}
+    
+void setupMaterial(bool isLightSource, vec3 lightColor) {
+      if (isLightSource) {
+         sphereMaterial.ambient = lightColor;  // 发光球体的环境光为光源颜色
+         sphereMaterial.diffuse = lightColor;  // 发光球体的漫反射为光源颜色
+         sphereMaterial.specular = vec3(1.0);  // 镜面反射为白色
+         sphereMaterial.shininess = 64.0;      // 高光系数较高
+      } else {
+         // 非光源球体的材质属性
+         sphereMaterial.ambient = vec3(0.2, 0.2, 0.2);   // 环境光分量为灰色
+         sphereMaterial.diffuse = vec3(1.0, 0.0, 0.0);   // 漫反射分量为红色
+         sphereMaterial.specular = vec3(1.0);            // 镜面反射为白色
+         sphereMaterial.shininess = 32.0;                // 高光系数较高
+      }
+   }
+
+void main(void) {
+    vec3 color = getBackgroundColor(vPos);
+    vec3 V = vec3(0.0);
+    vec3 W = normalize(vec3(vPos.xy, -uFL));
+
+    float tMin = 1000.0;
+    vec3 finalColor = vec3(0.0);
+    vec3 lightContribution = vec3(0.0);
+
+    float seed;
+
+
+    // Set seed based on cursor position
+    if (uCursor.x < -0.3 && uCursor.y < -0.3) {
+        seed = 1.0;
+    } else if (uCursor.x < -0.3 && uCursor.y > -0.3) {
+        seed = 2.0;
+    } else if (uCursor.x > -0.3 && uCursor.y > -0.3) {
+        seed = 344.0;
+    } else {
+        seed = 100.0;
+    }
+
+    // Iterate through each sphere
+    for (int i = 0; i < ${NSPHERES}; i++) {
+        vec3 C = uSpheres[i].xyz;
+        float r = uSpheres[i].w;  // Sphere radius
+        float t = raySphere(V, W, C, r);
+
+        if (t > 0. && t < tMin) {
+            tMin = t;
+            vec3 P = V + t * W;   // Intersection point
+            vec3 N = normalize(P - C);  // Normal at the intersection point
+
+            // Generate light color based on seed and index
+            vec3 lightColor = generateLightColor(seed, i);
+
+            // Determine if this sphere is a light source
+            bool isLightSource = (i != 0);
+
+            // Set up the material for the sphere
+            setupMaterial(isLightSource, lightColor);
+
+            if (isLightSource) {
+                // Light-emitting sphere color
+                finalColor = sphereMaterial.ambient;
+            } else {
+                // Non-light-emitting sphere: compute light contribution
+                for (int j = 1; j < ${NSPHERES}; j++) {
+                    vec3 lightPos = uSpheres[j].xyz;
+                    float lightRadius = uSpheres[j].w;
+                    vec3 L = normalize(lightPos - P);
+                    vec3 E = normalize(-W);  // View direction
+                    vec3 R = reflect(-L, N);  // Reflection direction
+
+                    // Diffuse and specular contributions
+                    float radiusFactor = lightRadius / distance(P, lightPos);
+                    vec3 diffuse = generateLightColor(seed, j ) * max(dot(N, L), 0.0) * radiusFactor;
+                    vec3 specular = sphereMaterial.specular * pow(max(dot(R, E), 0.0), sphereMaterial.shininess) * radiusFactor;
+
+                    lightContribution += diffuse + specular;
+                }
+                finalColor = sphereMaterial.ambient + lightContribution;
+            }
+        }
+    }
+
+    // Output final color
+    gl_FragColor = vec4(finalColor, 1.0);
+}
+
+      `;
+
+
+
+// WAIT 100 MSECS BEFORE STARTING UP
+
+setTimeout(() => {
+   let gl = start_gl(canvas1, meshData, vertexSize, vertexShader, fragmentShader);
+
+   // FIND LOCATIONS IN GPU PROGRAM OF UNIFORM VARIABLES
+
+   let uFL       = gl.getUniformLocation(gl.program, "uFL"      ); // 在 shader 中定义了 uniform 变量 uFL，因此需要显式地获取 uFL 的地址 (location)。
+   // gl.getUniformLocation() 会返回一个引用，用于访问这些 uniform 变量。如果着色器中没有声明这个变量，或者名称拼写错误，gl.getUniformLocation() 会返回 null。
+   let uTime     = gl.getUniformLocation(gl.program, "uTime"    );
+   let uCursor   = gl.getUniformLocation(gl.program, "uCursor"  ); 
+   let uSpheres  = gl.getUniformLocation(gl.program, "uSpheres" ); 
+
+   // ANIMATE AND RENDER EACH ANIMATION FRAME
+
+   let startTime = Date.now() / 1000;
+
+   setInterval(() => {
+      // SET ALL UNIFORM VARIABLES
+      let time = Date.now() / 1000 - startTime;
+      gl.uniform1f(uTime, time);   // 设置 uTime 为当前时间。
+      gl.uniform3fv(uCursor, cursor);   // 设置光标位置。
+      gl.uniform1f(uFL, 3); // 设置 uFL 为 3.0。
+
+      let data = [];
+
+      // Sphere 1: Diagonal circular motion from bottom-left to top-right
+      let theta1 = time; // Simple circular motion over time
+      let c1 = .15 * Math.cos(theta1);  // X and Y coordinates
+      let s1 = .15 * Math.sin(theta1);  // Z coordinate
+      let x1 = c1;
+      let y1 = c1;
+      let z1 = -1 + s1;
+      data.push(x1, y1, z1, .07); // Push Sphere 1 position (centered at the origin)
+
+      // // Sphere 2: Moves in the opposite diagonal direction, centered at Sphere 1
+      // let theta2 = time + Math.PI; // Opposite direction (180 degrees phase shift)
+      // let c2 = .15 * Math.cos(theta2);  // Scaled slightly smaller circle for variation
+      // let s2 = .15 * Math.sin(theta2);
+      // let x2 = x1 + c2; // Centered around Sphere 1
+      // let y2 = y1 - c2; // Moves in the opposite diagonal direction
+      // let z2 = z1 + s2;
+      // data.push(x2, y2, z2, .04); // Push Sphere 2 position
+
+      // Sphere 3: Also centered around Sphere 1 but moves in a different phase
+      for (let n = 1; n<5; n++) {
+         let theta =  time + Math.PI - .9 *n// time + Math.PI - .7 * n; 
+         let c = .135 * Math.cos(theta);
+         let s = .135 * Math.sin(theta);
+         let x = x1 + c; // Centered around Sphere 1
+         let y = y1 - c;  // + c3; // Moves diagonally, same center as Sphere 1
+         let z = z1 + s; // Z motion also centered around Sphere 1
+         data.push(x, y, z, .05 - .01*n); // Push Sphere 3 position
+
+      }
+
+      // Pass the data array to the shader
+      gl.uniform4fv(uSpheres, data);  // Send updated sphere positions to the GPU
+
+      for (let n = 0 ; n < meshData.length ; n++) {
+         let mesh = meshData[n].mesh;
+         gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+         gl.drawArrays(meshData[n].type ? gl.TRIANGLE_STRIP : gl.TRIANGLES, 0, mesh.length / vertexSize);
+      }
+
+      }, 30); // Update every 30 milliseconds
+   });
+
+</script>
+</body>
+</html>

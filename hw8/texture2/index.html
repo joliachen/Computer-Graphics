@@ -1,0 +1,25 @@
+<body bgcolor=#ffffff>
+<center><canvas id='canvas1' width=800 height=800></canvas>
+<script src=lib.js></script>
+<script>
+
+texture(0, 'brick.png');
+texture(1, 'polka_dots.png');
+texture(2, 'bumpy.jpg');
+
+function drawFrame() {
+   requestAnimationFrame(drawFrame);
+   let t = Date.now() / 1000;
+   M.S().perspective(3);
+      M.S().move(-.6, .3,0).turnY(t).scale(.2).draw(Tube(30)    , [1,1,1]   , 1,  0   ).R();
+      M.S().move(  0, .3,0).turnY(t).scale(.2).draw(Disk(30)    , [1,1,1]   , 1,  0   ).R();
+      M.S().move( .6, .3,0).turnY(t).scale(.2).draw(Cylinder(30), [1,1,1]   , 1,  0   ).R();
+      M.S().move(-.6,-.3,0).turnY(t).scale(.2).draw(Sphere(30)  , [1,1,1]   , 1,  2   ).R();
+      M.S().move(  0,-.3,0).turnY(t).scale(.2).draw(Cube()      , [1,1,0]   , 1,  1,-1).R();
+      M.S().move( .6,-.3,0).turnY(t).scale(.2).draw(Torus(30)   , [.4,.2,.1], 1, -1, 2).R();
+   M.R();
+}
+requestAnimationFrame(drawFrame);
+
+</script>
+

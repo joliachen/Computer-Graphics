@@ -1,0 +1,202 @@
+
+const vertexShader = `
+attribute vec3 aPosition;
+attribute vec3 aNormal;
+attribute float aType;  // 0: trunk, 1: leaves
+
+uniform mat4 uProjection;
+uniform mat4 uModel;
+uniform mat4 uView;
+uniform float uTime;
+uniform vec3 uWindDirection;
+
+varying vec3 vNormal;
+varying vec3 vPosition;
+varying float vType;
+
+// 风的影响函数
+vec3 applyWind(vec3 pos, float strength) {
+    float wind = sin(uTime * 2.0 + pos.y * 0.5) * strength;
+    return pos + uWindDirection * wind * aType; // 只对树叶应用风力
+}
+
+void main() {
+    vType = aType;
+    vNormal = (uModel * vec4(aNormal, 0.0)).xyz;
+    
+    // 应用风力效果
+    vec3 windPos = applyWind(aPosition, 0.1);
+    vec4 worldPos = uModel * vec4(windPos, 1.0);
+    vPosition = worldPos.xyz;
+    
+    gl_Position = uProjection * uView * worldPos;
+}
+`;
+
+// 片段着色器
+const fragmentShader = `
+precision mediump float;
+
+varying vec3 vNormal;
+varying vec3 vPosition;
+varying float vType;
+
+uniform vec3 uLightPos;
+uniform vec3 uViewPos;
+
+// 树的材质颜色
+const vec3 TRUNK_COLOR = vec3(0.45, 0.25, 0.1);
+const vec3 LEAF_COLOR = vec3(0.1, 0.5, 0.1);
+
+void main() {
+    vec3 normal = normalize(vNormal);
+    vec3 lightDir = normalize(uLightPos - vPosition);
+    vec3 viewDir = normalize(uViewPos - vPosition);
+    vec3 halfDir = normalize(lightDir + viewDir);
+    
+    // 基础光照计算
+    float ambient = 0.2;
+    float diffuse = max(dot(normal, lightDir), 0.0);
+    float specular = pow(max(dot(normal, halfDir), 0.0), 32.0);
+    
+    // 根据部位选择颜色
+    vec3 baseColor = mix(TRUNK_COLOR, LEAF_COLOR, vType);
+    
+    // 添加一些随机变化给树叶
+    if(vType > 0.5) {
+        float random = fract(sin(dot(vPosition.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        baseColor *= (0.8 + 0.4 * random);
+    }
+    
+    // 最终颜色
+    vec3 color = baseColor * (ambient + diffuse) + specular * 0.5;
+    gl_FragColor = vec4(color, 1.0);
+}
+`;
+
+// 生成树的几何体数据
+function generateTreeGeometry() {
+    const trunkSegments = 10;
+    const trunkRadius = 0.15;
+    const trunkHeight = 1.0;
+    const branchLevels = 3;
+    
+    let vertices = [];
+    let normals = [];
+    let types = [];
+    let indices = [];
+    
+    // 生成树干
+    for(let i = 0; i <= trunkSegments; i++) {
+        const theta = (i / trunkSegments) * Math.PI * 2;
+        const c = Math.cos(theta);
+        const s = Math.sin(theta);
+        
+        for(let h = 0; h <= trunkHeight; h += 0.2) {
+            vertices.push(c * trunkRadius, h, s * trunkRadius);
+            normals.push(c, 0, s);
+            types.push(0.0); // 树干类型
+        }
+    }
+    
+    // 生成树叶 (使用圆锥形)
+    const leafLevels = 4;
+    const leafSegments = 8;
+    let leafStartY = trunkHeight * 0.6;
+    let leafRadius = trunkRadius * 3;
+    
+    for(let level = 0; level < leafLevels; level++) {
+        const y = leafStartY + level * 0.3;
+        const scale = 1.0 - level / leafLevels;
+        
+        for(let i = 0; i < leafSegments; i++) {
+            const theta = (i / leafSegments) * Math.PI * 2;
+            const nextTheta = ((i + 1) / leafSegments) * Math.PI * 2;
+            
+            const x = Math.cos(theta) * leafRadius * scale;
+            const z = Math.sin(theta) * leafRadius * scale;
+            const nx = Math.cos(theta + Math.PI / leafSegments);
+            const nz = Math.sin(theta + Math.PI / leafSegments);
+            
+            vertices.push(x, y, z);
+            normals.push(nx, 0.5, nz);
+            types.push(1.0); // 树叶类型
+        }
+    }
+    
+    return {
+        vertices: new Float32Array(vertices),
+        normals: new Float32Array(normals),
+        types: new Float32Array(types)
+    };
+}
+
+// 初始化WebGL
+function initGL(canvas) {
+    const gl = canvas.getContext('webgl');
+    
+    // 编译着色器程序
+    const program = createProgram(gl, vertexShader, fragmentShader);
+    gl.useProgram(program);
+    
+    // 获取着色器变量位置
+    const locations = {
+        attributes: {
+            position: gl.getAttribLocation(program, 'aPosition'),
+            normal: gl.getAttribLocation(program, 'aNormal'),
+            type: gl.getAttribLocation(program, 'aType')
+        },
+        uniforms: {
+            projection: gl.getUniformLocation(program, 'uProjection'),
+            model: gl.getUniformLocation(program, 'uModel'),
+            view: gl.getUniformLocation(program, 'uView'),
+            time: gl.getUniformLocation(program, 'uTime'),
+            windDirection: gl.getUniformLocation(program, 'uWindDirection'),
+            lightPos: gl.getUniformLocation(program, 'uLightPos'),
+            viewPos: gl.getUniformLocation(program, 'uViewPos')
+        }
+    };
+    
+    // 创建几何体数据
+    const geometry = generateTreeGeometry();
+    
+    // 设置缓冲区
+    const buffers = {
+        position: createBuffer(gl, geometry.vertices),
+        normal: createBuffer(gl, geometry.normals),
+        type: createBuffer(gl, geometry.types)
+    };
+    
+    return { gl, program, locations, buffers };
+}
+
+// 主渲染循环
+function render(gl, state) {
+    gl.clearColor(0.1, 0.1, 0.1, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    
+    const time = performance.now() * 0.001;
+    
+    // 更新uniforms
+    gl.uniformMatrix4fv(state.locations.uniforms.projection, false, state.projection);
+    gl.uniformMatrix4fv(state.locations.uniforms.model, false, state.model);
+    gl.uniformMatrix4fv(state.locations.uniforms.view, false, state.view);
+    gl.uniform1f(state.locations.uniforms.time, time);
+    gl.uniform3fv(state.locations.uniforms.windDirection, [0.1, 0, 0.1]);
+    gl.uniform3fv(state.locations.uniforms.lightPos, [5, 5, 5]);
+    gl.uniform3fv(state.locations.uniforms.viewPos, [0, 2, 5]);
+    
+    // 绘制树
+    gl.drawArrays(gl.TRIANGLES, 0, state.vertexCount);
+    
+    requestAnimationFrame(() => render(gl, state));
+}
+
+// 使用示例
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+canvas.width = 800;
+canvas.height = 600;
+
+const state = initGL(canvas);
+render(state.gl, state);

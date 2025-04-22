@@ -1,0 +1,42 @@
+workflow
+
+uniform:
+It is a global value set by CPU that you can access it in both vertex shader and fragment shader in your gpu program.
+
+1.vertex shader
+vertex's attribute -----(vertex shader) ----> output (transformed position, color etc.)  
+
+2. rasterization and interpolation
+---> GPU assembles them into primitives (triangles) 
+---> rasterization (rasterizes the primitives (e.g., triangles) by determining which pixels (or fragments) on the screen are covered by each triangle.)
+     During rasterization, the GPU also interpolates vertex attributes (like color, texture coordinates, and normals) across the triangle.
+
+3. fragment vector
+the fragment values (interpolated from the vertex shader) ---- (fragment shader) ---> final color of the fragment (gl_FragColor)
+
+
+To create shader, you should first write the format of shader in string format:
+
+vertex shader:
+attribute:
+when defining a shader, there is a attribute called "attribute vec3 aPos;" only available to vertex shader, once the vertex shader processes each vertex, 
+these attributes are no longer needed in the fragment shader directly.
+
+attribute variables receive data directly from buffers in the CPU (JavaScript) and send it to the vertex shader to perform transformations.
+Each vertex has its own set of attribute data. For example, a triangle has three vertices, and each vertex might have a different position (aPos) and color.
+
+varying:
+It is used to pass data from the vertex shader to the fragment shader. It’s called varying because its value varies 
+across each pixel of a primitive (triangle) based on interpolation.
+
+Interpolation
+interpolation is widely used to compute intermediate values (like colors, positions, normals) across pixels within a triangle,
+ ensuring that the rendering looks smooth and continuous rather than abrupt. It often happens during rasterization (which is the process 
+ of converting vector data (like vertices of a triangle) into fragments (which represent pixels on the screen)).
+ If you have three vertices of a triangle, each vertex might have a color or position. 
+ However, the pixels (fragments) inside the triangle also need values for those same properties.
+Interpolation calculates these values for the pixels inside the triangle by blending the values 
+from the vertices based on their position within the triangle.
+For example, if the triangle has three vertices with different colors, the pixels inside the triangle
+ will smoothly transition from one vertex color to another. This creates a gradient effect, rather than each 
+ pixel having a fixed color based on a single vertex.

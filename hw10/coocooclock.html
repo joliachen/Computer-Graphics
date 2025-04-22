@@ -1,0 +1,137 @@
+<body bgcolor=#ffffff><font face=courier>
+    <center><canvas id=canvas1 width=900 height=900></canvas>
+    <script src=lib.js></script>
+    <script>
+    
+    trackMouse(canvas1);
+    texture(0,'./pic/flower.png');
+    texture(1,'./pic/water.png');
+    
+    // I PRE-BUILD ALL MY OBJECTS FOR EFFICIENCY.
+    
+    let myCube     = Cube();
+    let myCylinder = Cylinder(20);
+    let mySphere   = Sphere(20);
+    let myCone     = Cone();
+    
+    // MY MATERIAL IN THIS EXAMPLE IS UNIFORM FOG.
+    
+    addMaterial(1, `color = mix(color, vec3(.5), min(.95,.007 * dot(vTpos, vTpos)));`); // vTpos: 
+    // wood
+    addMaterial(2, `vec3 p = 8.0 * vTpos; float n = noise(p) + 0.5 * noise(2.0 * p); color = mix(vec3(0.4,0.2,0.1), vec3(0.8,0.4,0.2), n);`);
+    // Cloud
+    addMaterial(3, `float n = noise(2.0 * vTpos); color = mix(color, vec3(1), 0.7 * n);`);
+
+    startGL(canvas1);
+    
+    // MY SPRING HAS HIGH MASS, SO IT WILL RESPOND LIKE A HEAVY OBJECT.
+    
+    let joint = new Spring();
+    joint.setMass(10);
+
+    let bell = new Spring();
+    bell.setMass(1000);
+    
+    let birdColor = [1,0,0];
+
+    function drawFrame() {
+       requestAnimationFrame(drawFrame);
+       let time = Date.now() / 1000;
+    
+       // SCALE THE SCENE NON-UNIFORMLY BECAUSE THE CANVAS IS NOT SQUARE.
+    
+       VM.identity().perspective(3).scale(1,canvas1.width/canvas1.height,1).scale(.3).turnY(Math.PI/9);// .scale(1,canvas1.width/canvas1.height,1);
+    
+       // USE THE MOUSE TO ROTATE THE VIEW ONLY IF NOT RUNNING ON A PHONE.
+    
+       if (! isPhone())
+       VM.turnX(canvas1.ry/100).turnY(canvas1.rx/100);
+    
+       drawScene(() => {
+
+          material = 1;
+          // draw = (Shape, color, opacity, texture, bumpTexture) => {
+          // PLACE AND THEN RENDER THE JOINTS (SHOULDER, ELBOW, WRIST), USING IK.
+          let c =  [ 0, .3, 0];
+          let angle = (Math.PI/3) * S(4*time); 
+          let l = [-.4*C(angle+Math.PI/4), -.4*S(angle+Math.PI/4), 0];
+          let r = [.4*S(angle+Math.PI/4), -.4*C(angle+Math.PI/4), 0];
+          
+          let bird = [0, .3, .6 + .6 * C(6*time)];
+          let elbow = add(c,ik(.6,.6,subtract(bird,c),[0,-1,0]));
+                     
+         M.S().move(c);
+            // bird
+            M.S().move(bird);
+               M.S().scale(.15,.15,.2).draw(mySphere ,birdColor).R();
+               M.S().scale(.1).move(0,1.5,1.).draw(mySphere,birdColor).R();
+               M.S().scale(.05).move(0,3.,2.5).draw(myCone,birdColor).R();
+               for(let wing = -1; wing <=1; wing+=2){
+                  material = 2;
+                  let range = Math.PI/2 * C(6*time);
+                  // let centre = [0, .3, 1];
+                  let wingT = [wing*.4, .15*range, 0];
+                  let wingE = add(bird,ik(.001,.001,subtract(wingT,bird),[0,-.5,0]));
+                  M.S().move(wingT).scale(.05).draw(mySphere, [0,.5,1]).R();
+                  M.S().turnX(Math.PI/2).move(wingE).scale(.05).draw(mySphere, birdColor).R();//.turnX(-Math.PI/2
+
+                  M.S().move(mix(wingT,wingE,.5)).aim(subtract(wingT,wingE)).scale(0,.2,distance(wingT,wingE)/2).draw(mySphere,birdColor).R();
+                  M.S().move(mix(bird,wingE,.5)).aim(subtract(bird,wingE)).scale(.02,.02,distance(wingT,wingE)/2).draw(mySphere,birdColor).R();
+               }
+                    
+            M.R();
+            M.S().move(0,1.8,.3);
+            
+            // cloud 
+            material = 3;
+            for (let side=-1;side<=1;side+=2){
+               M.S().turnZ(side*Math.PI/4).move(-side*.45,-.038,-.3).scale(.4,.01,.4,).draw(myCube, [0,.5,1],.9,-1,1).R();
+            }
+            M.R();
+
+            M.S().move(elbow).scale(.07,.07,.04).draw(mySphere,[0,.5,1]).R();
+           
+            //M.S();//.turnZ(.3*C(6*time));// centre
+            M.S().move(0,.3,0).scale(.1).draw(mySphere  ,[0,.5,1]).R();
+            M.S().move(l).scale(.07).draw(mySphere ,[0,.5,1]).R();
+            M.S().move(r).scale(.07).draw(mySphere ,[0,.5,1]).R();
+
+            // Limbs(up)
+            M.S().move(mix(bird,elbow,.5)).aim(subtract(bird,elbow)).scale(.02,.02,distance(bird,elbow)/2).draw(myCube,[1,1,1]).R();
+            M.S().move(mix(c,elbow,.5)).aim(subtract(elbow,c)).scale(.02,.02,distance(elbow,c)/2).draw(myCube,[1,1,1]).R();
+            
+            // Limbs(down)
+            M.S().move(mix(c,l,.5)).aim(subtract(c,l)).scale(.02,.02,distance(c,l)/2).draw(myCube,[1,1,1]).R();
+            M.S().move(mix(c,r,.5)).aim(subtract(c,r)).scale(.02,.02,distance(c,r)/2).draw(myCube,[1,1,1]).R();
+            //M.R();
+            let array = [l,[0,0,0],r];
+            // Clock bell
+            for (let i = -1; i<=1; i+=2){
+               let e = array[i+1];
+               e[0] = e[0];// *.3*C(6*time);
+               e[1] = e[1];//*.3*C(6*time);
+               joint.setForce(e[0]); // x coordinates
+               joint.update(.03);
+               let x = joint.getPosition();
+               let p = add(e, scale(normalize([x,-.6,0]),.6));
+               M.S().move(p).aim(subtract(p,e)).scale(.1).draw(mySphere,[1,0,0]).R();
+               M.S().move(mix(e,p,.5)).aim(subtract(p,e)).scale(.01,.01,distance(e,p)/2).draw(myCube,[1,0,0]).R();
+               
+               bell.setForce(p[0]); // x coordinates
+               bell.update(.03);
+               bell.setDamping(1000);
+               let bx = joint.getPosition();
+               let bp = add(p, scale(normalize([x,-.2,0]),.2));
+               M.S().move(bp).aim(subtract(bp,p)).scale(.05,.1,.3).draw(mySphere,[1,0,0],0.5).R();
+
+            }
+            // Clock
+            M.S().move(0,.6,0).scale(.6,.6,.4).draw(myCube,[1,.3,.2],.8,0,0).R();
+         M.R();
+       });
+    }
+    requestAnimationFrame(drawFrame);
+    
+    </script>
+    
+    

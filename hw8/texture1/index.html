@@ -1,0 +1,20 @@
+<body bgcolor=#ffffff>
+<center><canvas id='canvas1' width=800 height=800></canvas>
+<script src=lib.js></script>
+<script>
+
+texture(0, 'brick.png');
+texture(1, 'polka_dots.png');
+
+function drawFrame() {
+   requestAnimationFrame(drawFrame);
+   let t = Date.now() / 1000;
+   M.S().perspective(3);
+      M.S().move(-.5,0,0).turnY(t).scale(.3).draw(Cube()   , [1,1,1], 1, 0).R();
+      M.S().move( .5,0,0).turnX(t).scale(.3).draw(Torus(30), [1,1,1], 1, 1).R();
+   M.R();
+}
+requestAnimationFrame(drawFrame);
+
+</script>
+

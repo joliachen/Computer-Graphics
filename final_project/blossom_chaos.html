@@ -1,0 +1,429 @@
+<body style="background: linear-gradient(45deg, #FFB6C1, #FFA07A, #FFD700); margin: 0; font-family: courier;"><font face=courier>
+  <center>
+  <table>
+  <tr><th valign=top>
+  <table>
+  <tr><td><input type=range id=surpriseSlider value="0"  ></input> <font color=white><big> <em>Blossom Spring Effects</em>
+  <tr><td><input type=range id=bigSurpriseSlider value="0"  ></input> <font color=white><big><em>Virus Invasion Effects</em>
+    <br>
+    <div style="width: 40%; font-family: Arial, sans-serif; line-height: 1.6; margin: 20px;">
+      <h2>Interaction guidance</h2>
+      <ol>
+        <li>
+          <strong>Crank It Up!</strong> 
+          <span>Max out the <em>Blossom Spring Effects</em> slider — unleash the flower power! 🌸✨</span>
+        </li>
+        <li>
+          <strong>Click Away!</strong> 
+          <span>Tap the screen for a springtime explosion. 🌺💥</span>
+        </li>
+        <li>
+          <strong>Time for Chaos!</strong> 
+          <span>Max out the <em>Virus Invasion Effects</em> slider — the horse disappears, and the flowers go rogue! 🦠🌼</span>
+        </li>
+        <li>
+          <strong>Witness the Madness!</strong> 
+          <span>Click now to watch the blossoms get "infected." 😱🌸 -> ☠️</span>
+        </li>
+        <p>
+          <strong>Note:</strong> Keep <em>Blossom Spring Effects</em> the min or the max and slowly slide <em>Virus Invasion Effects</em> to see the color transition. 🌈
+        </p>
+      </div>
+      </ol>
+    
+
+  </table>
+  <th><canvas id="canvas1" width="700" height="700" style="margin-left: -600px;"></canvas>
+  </table>
+  <script src=lib.js></script>
+  <script>
+    
+ 
+  let sliders = document.getElementsByTagName('input');
+  for (let slider in sliders)
+     if (sliders[slider].style)
+        sliders[slider].style.width = 200;
+
+  trackMouse(canvas1);
+  
+
+  let pathPoints = [];
+  let amplitude = 1.;
+  let radius = 1.5;    
+
+  for (let i = 0; i <= 14; i++) {
+      let angle = (2 * Math.PI * i) / 12;
+      let r = radius + ((i % 2) * amplitude);
+      pathPoints.push({
+          x: r * Math.cos(angle),
+          y: r * Math.sin(angle)
+      });
+  }
+
+  let pathCurve = Curves.getCurvePoints(pathPoints, 'catmullRom', true, 100);
+  let myCube   = Cube();
+  let myTube   = Tube(20);
+  let mySphere = Sphere(20);
+  let myTruncatedCone = TruncatedCone(20, 20, 0.5, 1); 
+
+  
+  startGL(canvas1);
+  
+  
+  
+  let ls = [1,.05,1]; // landsize
+  
+  texture(0, "./images/nor_smile.jpg");
+  texture(1, "./images/smile.jpg");
+  texture(2, "./images/nor_flower.png");
+  texture(3, "./images/water.png");
+
+  
+
+  TreeUpperColor = [177/255,245/255,118/255];
+  TreeLowerColor =  [95/255,161/255,31/255];
+  let purple = [215/255,89/255,222/255];
+
+  // Prepare for clicking flowers
+  let flowers = [];
+  canvas1.addEventListener('click', (event) => {
+
+    const rect = canvas1.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width * 2 - 1;
+    const y = (event.clientY - rect.top) / rect.height * 2 - 1;
+    
+    flowers.push({
+            x: x,
+            y: y,
+            creationTime: Date.now() / 1000,
+            scale: 0
+        });
+    });
+
+    // clicking flowers
+    function drawFlower(x, y, time, scale, surprise) {
+      M.S().move(x*1.5, -y*1.5 -.1+ Math.cos(time*3)*.1+.2, -2);
+  
+  let layers = 2;
+  let numPetals = 8;            
+  let radius_list = [0.15,0.2];          
+  let petalScale = 0.04;    
+
+  let bigSurprise= bigSurpriseSlider.value/ 100;
+  let t = bigSurprise ;  
+
+  let ranClr = Math.random();  
+  let flowerColor = [
+      [Math.min(1, (245/255 + ranClr*0.1)), 200/255, Math.min(1, (200/255 + ranClr*0.1))],
+      [Math.min(1, (225/255 + ranClr*0.1)), 91/255, Math.min(1, (100/255 + ranClr*0.1))]
+  ];
+      
+      if(bigSurprise==0){M.S().scale(.05).draw(mySphere, [1,0,0]).R();}
+              else{M.S().scale(.05).draw(mySphere, mix([1, 0, 0],[0,0,0], t), 1).R();}
+      for(let j = 0; j < layers; j++) {
+          for(let i = 0; i < numPetals; i++) {
+              let angle2 = Math.PI*j/6 + (2 * Math.PI * i) / numPetals;
+              let px = radius_list[j] * Math.cos(angle2);
+              let py = radius_list[j] * Math.sin(angle2);
+              
+              M.S().move(px, py, -j*.1).turnZ(angle2).scale(petalScale * scale)
+              .scale(3, 1.5, 0.5);
+              if(bigSurprise==0){
+                M.draw(mySphere, flowerColor[j], 1).R();
+              }else{
+                M.draw(mySphere, mix(flowerColor[j], purple, t), 1).R();
+              }
+          }
+      }
+      M.R();
+  }
+
+  function getValueAtTime(curve, t) { 
+      let index = Math.floor(t * curve.length) % curve.length;
+      return curve[index];}
+
+
+  function drawFrame() {
+     requestAnimationFrame(drawFrame);
+     let surprise   = surpriseSlider.value   / 100;
+     let bigSurprise= bigSurpriseSlider.value/ 100;
+     let t = bigSurprise ;  
+    
+
+     let Spring = [152/255, 227/255, 54/255];
+     let Summer = [103/255, 171/255, 48/255];
+     let Autumn = [1, 144/255, 62/255];
+     let Winter = [237/255, 215/255, 173/255];
+
+     function getBallColor(x, z) {
+        if (x <= 0 && z >= 0) {
+            return Spring; 
+        } else if (x >= 0 && z >= 0) {
+            return Summer; 
+        } else if (x >= 0 && z <= 0) {
+            return Autumn;  
+        } else {
+            return Winter; 
+        }
+      }
+  
+     let time = Date.now() / 1000;
+  
+     VM.identity().perspective(15).scale(.8).turnX(canvas1.ry/30).turnY(canvas1.rx/30);
+
+     // draw = (Shape, color, opacity, texture, bumpTexture) 
+
+     drawScene(() => {
+      M.S().turnX(Math.PI/16).move(-.2,-.3,0).scale(.3);
+      // tree
+        M.S().move(0,Math.cos(time*3)*.1-.25,0);
+        //   M.S().move(0,.25,0).scale(.5).turnX(Math.PI/2).scale(.5).draw(myTube, [.5, .2, .1]).R();
+          M.S().move(0,.5,0).scale(.25).scale(.5,3,.5).scale(1-bigSurprise).turnX(Math.PI).draw(myTruncatedCone, [.5, .2, .1]).R();
+          let centerY = 1. + surprise * 0.15;  
+          // surprise flower core
+          M.S().move(0,centerY,0).scale(.1*surprise);
+            
+          if(bigSurprise==0){M.draw(mySphere,[1,0,0]).R();}
+              else{M.draw(mySphere, mix([1, 0, 0],[0,0,0], t), 1).R();}
+           
+            // Surprise flower
+            let layers = 2;
+            let numPetals = 8;            
+            let radius_list = [0.15,0.2];          
+            let petalScale = 0.04;      
+            let flowerColor = [	[245/255,200/255,200/255],[225/255,91/255,100/255]];
+            let bigFlowerColor=[[247/255,209/255,168/255],[250/255,107/255,132/255]];
+
+            for(let j = 0; j < layers; j++) {
+            for(let i = 0; i < numPetals; i++) {
+                let angle2 = Math.PI*j/6 + (2 * Math.PI * i) / numPetals;
+                let x = radius_list[j] * Math.cos(angle2);
+                let y = radius_list[j] * Math.sin(angle2);
+                
+                M.S()
+                .move(x, centerY+y, -j*.1).turnZ(angle2).scale(petalScale).scale(surprise*2.).scale(3., 1.5, 0.5);
+                if (bigSurprise==0){
+                  M.draw(mySphere, flowerColor[j], 1);
+                } else{
+                  M.draw(mySphere, mix(flowerColor[j],purple, t), 1); 
+                }
+                 
+                M.R();}
+            }
+            // big surprise
+            centreZ = centerY+.8
+            M.S().move(0,centreZ,-1.8).scale(.4*bigSurprise).turnY(Math.PI/2).turnX(-Math.PI/2).draw(mySphere,[1.,1,1],1,1,0).R(); // .turnY(Math.PI/5).turnX(-Math.PI/6)
+            for(let k = 0; k < layers; k++) {
+            for(let r = 0; r < numPetals; r++) {
+                let angle2 = Math.PI*k/6 + (2 * Math.PI * r) / numPetals;
+                let m = radius_list[k] * Math.cos(angle2);
+                let n = radius_list[k] * Math.sin(angle2);
+                M.S()
+                .move(m, centreZ+n, -k*.1-3).turnZ(angle2).scale(petalScale*2).scale(bigSurprise*10).scale(3., 1.0, 0.5)       
+                .draw(mySphere, bigFlowerColor[k], 1,2,2)  
+                .R();}
+            }
+            
+
+
+        M.R();
+      
+      // bouncing horse
+      let bounce = Math.abs(Math.sin(time * 3)) * 0.5;  
+      let angle = time;                                  
+      let radius = 0.8;                                 
+      
+      let ballX = radius * Math.cos(angle);
+      let ballZ = radius * Math.sin(angle);
+      let ballColor = getBallColor(ballX, ballZ);
+
+      let r  = .3;
+      let l1 = 1.3;
+      let l2 = 1.;
+
+      let joint = J => M.S().move(J).scale(r).draw(mySphere,[0,0,0]).R();
+      let getKnee = (H,F) => add(H, ik(l1, l2, subtract(F,H), [0,-.1,0]));
+      let limb = (A,B,color) => M.S().move(mix(A,B,.5)).aim(subtract(A,B)).scale(r,r,distance(A,B)/2).draw(myTube,color).R();
+
+      M.S().move(0,Math.cos(time*3)*.1,0).scale(1-bigSurprise);
+        M.S().move(radius * Math.cos(angle), .5 * bounce+0.2, radius * Math.sin(angle)).scale(0.1).turnY(-angle+Math.PI/2);
+          M.S().move(.15,.15,0).scale(1.5,1,1).draw(mySphere, ballColor, 1).R();
+          M.S();
+          for (let j = -1; j<2; j+=2){
+            for(let i=-1; i<2; i+=2){
+            let uJoint = [j*1.5,0.6,.1+i*.5];
+            let dJoint = [j*1.5-1.5+bounce*5,-2.2+2*bounce,.1+i*.5];
+            let mJoint = getKnee(uJoint, dJoint);
+            joint(uJoint);
+            joint(dJoint);
+            joint(mJoint);
+            limb(uJoint,mJoint,ballColor);
+            limb(mJoint,dJoint,ballColor);
+          }
+          }
+          M.R();
+          M.S().move(-.8,1.5,0).scale(.8,1,.8).turnZ(Math.PI).draw(myTruncatedCone, ballColor, 1);
+            M.S().turnZ(Math.PI).move(-.8,1,0).scale(3).scale(.5,.2,.2).draw(mySphere, ballColor, 1).R();
+            M.S().turnX(Math.PI).move(-.1,1.7,.25).scale(.4).turnX(Math.PI).draw(myTruncatedCone, ballColor, 1).R();
+            M.S().turnX(Math.PI).move(-.1,1.7,-.25).scale(.4).turnX(Math.PI).draw(myTruncatedCone, ballColor, 1).R();
+          M.R();
+        M.R();     
+      M.R();
+
+      let grayColor = [0.5, 0.5, 0.5]; 
+      let transitionDownColor = mix(TreeLowerColor, grayColor, t);
+      let transitionUpColor   = mix(TreeUpperColor, grayColor, t);
+  
+      // tree lower layer
+      M.S().move(0,Math.cos(time*3+Math.PI/6)*.1+.2,0);
+      for(let i = 0; i < 8; i++){
+          let angle = (2 * Math.PI * i) / 8; 
+          if(bigSurprise==0){
+            M.S().turnY(-angle - surprise).turnX(-Math.PI/6).move(surprise, .6, -.1).scale(.2) 
+            .scale(1, .5, 1.5).draw(mySphere, TreeLowerColor).R();
+          }else{
+            M.S().turnY(-angle).turnX(-Math.PI/6).move(bigSurprise, .6-bigSurprise*.6, -.1).scale(.2)
+            .scale(1, .5, 1.5).draw(mySphere, transitionDownColor).R();
+                }
+      }
+      M.R();
+
+      // tree upper layer
+      M.S().move(0,Math.cos(time*3+Math.PI/3)*.1+.2,0);
+      for(let i = 0; i < 4; i++){
+          let angle = (2 * Math.PI * i) / 4; 
+          if(bigSurprise==0){
+          M.S().turnY(angle + surprise).turnX(-Math.PI/6).move(0, .75+surprise*.6, .25)   
+          .scale(.2).scale(1, .5, 1.5).draw(mySphere, TreeUpperColor) 
+          .R();}else{
+            M.S().turnY(angle ).turnX(-Math.PI/6).move(0, .75-bigSurprise, .25)   
+          .scale(.2).scale(1, .5, 1.5).draw(mySphere, transitionUpColor).R();
+          }
+      }
+      M.R();
+
+      M.S().move(0,Math.cos(time*3)*.1-.1,0);
+     // Floor
+       // Spring
+       M.S().move(-.5,0,.5);
+         M.S().scale(.5).scale(ls[0],ls[1],ls[2]);
+       if(bigSurprise==0){
+         M.draw(myCube,Spring).R();
+       }else{
+         M.draw(myCube,mix(Spring, grayColor, t)).R();
+       } 
+       M.R();
+
+      // Summer
+       M.S().move(.5,0,.5);
+         M.S().scale(.5).scale(ls[0],ls[1],ls[2]);
+       if(bigSurprise==0){
+         M.draw(myCube,Summer).R();
+       }else{
+         M.draw(myCube,mix(Summer, grayColor, t)).R();
+       }
+       M.R();
+     
+      // Autumn
+       M.S().move(.5,0,-.5);
+         M.S().scale(.5).scale(ls[0],ls[1],ls[2]);
+       if(bigSurprise==0){
+         M.draw(myCube,Autumn).R();
+       }else{
+         M.draw(myCube,mix(Autumn, grayColor, t)).R();
+       }
+       M.R();
+
+       // Winter
+       M.S().move(-.5,0,-.5);
+         M.S().scale(.5).scale(ls[0],ls[1],ls[2]);
+       if(bigSurprise==0){
+         M.draw(myCube,Winter).R();
+       }else{
+         M.draw(myCube,mix(Winter, grayColor, t)).R();
+       }
+       M.R();
+    
+       M.R();
+ 
+        pathCurve.forEach((point, i) => {
+          if (i > 0) {
+              M.S()
+               .move(point.x, point.y+.5, 0)
+               .scale(0.04)
+               .draw(mySphere, [1., 1, 0.0], 0.3) 
+               .R();
+              }
+          });
+
+        // Moving flower
+        let colorList = [
+            [219/255, 97/255, 86/255], 
+            [1.0, 0.714, 0.757], 
+            [1.0, 0.627, 0.478], 
+            [1.0, 0.498, 0.314], 
+            [1.0, 0.271, 0.0]    
+        ];
+        for(let offset = 0; offset < 5; offset++) {  
+          let offsetTime = time + offset * 1; 
+          let index = Math.floor(offsetTime * 50) % pathCurve.length;
+          let position = pathCurve[index];
+          let centerX3 = position.x;
+          let centerY3 = position.y + 0.5;
+          let centerZ3 = 0;
+
+          
+          M.S().move(centerX3, centerY3, centerZ3).move(0, Math.cos(offsetTime*3+Math.PI/3)*.1, 0);
+              M.S().turnX(Math.PI/2);
+              if(bigSurprise==0){M.S().scale(0.1).draw(mySphere, [1, 0, 0], 1).R();}
+              else{M.S().scale(0.1).draw(mySphere, mix([1, 0, 0],[0,0,0], t), 1).R();}
+
+                  
+
+                  let numPetals3 = 8;
+                  let petalScale3 = 0.08;
+
+                  for(let i = 0; i < numPetals3; i++) {
+                      let angle3 = (2 * Math.PI * i) / numPetals3;
+                      M.S()
+                      .turnY(angle3 + surprise)
+                      .move(0,0, 0.25)
+                      .scale(surprise*.1)
+                      .scale(1, .5, 1.5)
+                      if(bigSurprise==0){
+                        M.draw(mySphere, colorList[offset]).R();
+                      }else{
+                        M.draw(mySphere, mix(colorList[offset],purple, t)).R();
+                      }
+                     
+                  }
+              M.R();
+          M.R();
+      }
+
+      M.R();
+
+      // clicking flowers: filter is a function for array
+      flowers = flowers.filter((flower, index) => {
+        const age = time - flower.creationTime;
+        const growthDuration = 0.5;
+        const lifeDuration = 2.5;
+        
+        if (age < growthDuration) {
+            flower.scale = age / growthDuration;
+        } else if (age < lifeDuration) {
+            flower.scale = 1.0;
+        } else {// if the flower exceeds the age, the element will be eliminated from the array
+            return false;
+        }
+        
+        drawFlower(flower.x, flower.y, time, flower.scale, surprise);
+        return age < lifeDuration;
+    });
+     });
+  }
+  requestAnimationFrame(drawFrame);
+  
+  </script>
+  
+  

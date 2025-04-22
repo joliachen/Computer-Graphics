@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spheres with a Floating Hand</title>
+    <style>
+        body { 
+            margin: 0;
+            background: linear-gradient(to bottom, white, lightyellow, lightpink); /* 白色到浅黄色到浅粉色渐变 */
+        }
+        canvas { display: block; margin: auto; }
+    </style>
+</head>
+<body>
+   <style>
+      body {
+          margin: 0;
+          font-family: Arial, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+      }
+      #content {
+          display: flex;
+          width: 100%;
+          max-width: 1200px;
+          align-items: center;
+      }
+      #canvas1 {
+          border: 1px solid #000;
+          flex-shrink: 0; /* 确保 canvas 不会缩小 */
+      }
+      .text-container {
+          flex-grow: 1;
+          padding-left: 20px;
+      }
+  </style>
+</head>
+<body>
+  <div id="content">
+      <canvas id='canvas1' width=800 height=800></canvas>
+      <div class="text-container">
+        <h1>Wandering Planets</h1>
+          <p>Inspired by 
+              <a href="https://eng.libretexts.org/Bookshelves/Computer_Science/Applied_Programming/Book%3A_Introduction_to_Computer_Graphics_(Eck)/04%3A_OpenGL_1.1-_Light_and_Material/4.02%3A_Light_and_Material_in_OpenGL_1.1#:~:text=Material%20properties%20are%20vertex%20attributes%20in%20that%20same,properties%20is%20stored%2C%20along%20with%20the%20vertex%20coordinates." 
+                 target="_blank">David J. Eck</a>
+          </p>
+          <p>Try hovering your mouse over the top-left, top-right, bottom-left, and bottom-right sections to see different color reflection!😄</p>
+      </div>
+  </div>
+<script>
+// INITIALIZE GPU PROGRAM
+let start_gl = (canvas, meshData, vertexSize, vertexShader, fragmentShader) => {
+   let gl = canvas.getContext("webgl");
+   let program = gl.createProgram();
+   gl.program = program;
+   let addshader = (type, src) => {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (! gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+         throw "Cannot compile shader:\n\n" + gl.getShaderInfoLog(shader);
+      gl.attachShader(program, shader);
+   };
+   addshader(gl.VERTEX_SHADER  , vertexShader  );
+   addshader(gl.FRAGMENT_SHADER, fragmentShader);
+   gl.linkProgram(program);
+   if (! gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw "Could not link the shader program!";
+
+   gl.useProgram(program);
+
+   // gl.uniform3fv(uLightColorsLocation, flatLightColors); // after activate the containers of shaders, pass the ulightcolor to shaders
+
+   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+   gl.enable(gl.DEPTH_TEST);
+   gl.depthFunc(gl.LEQUAL);
+   let vertexAttribute = (name, size, position) => {
+      let attr = gl.getAttribLocation(program, name);
+      gl.enableVertexAttribArray(attr);
+      gl.vertexAttribPointer(attr, size, gl.FLOAT, false, vertexSize * 4, position * 4);
+   }
+   vertexAttribute('aPos', 3, 0);
+   return gl;
+}
+
+// LOGIC TO TRACK THE CURSOR
+
+let r = canvas1.getBoundingClientRect(), cursor = [0,0,0];
+let setCursor = (e, z) => cursor = [ (e.clientX - r.left) / canvas1.width * 2 - 1,
+                                     1 - (e.clientY - r.top) / canvas1.height * 2,
+                                     z !== undefined ? z : cursor[2] ];
+canvas1.onmousedown = e => setCursor(e, 1);
+canvas1.onmousemove = e => setCursor(e);
+canvas1.onmouseup   = e => setCursor(e, 0);
+
+// TRIANGLE DATA (IN THIS CASE, ONE SQUARE)
+
+let meshData = [
+   { type: 1, mesh: new Float32Array([ -1,1,0, 1,1,0, -1,-1,0, 1,-1,0 ]) },
+];
+
+const NSPHERES = 5;
+
+// VERTEX AND FRAGMENT SHADERS
+let vertexSize = 3;
+let vertexShader = `
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.0);
+      vPos = aPos;
+   }
+`;
+
+let fragmentShader = `
+precision mediump float;
+uniform float uTime, uFL;
+uniform vec3 uCursor;
+uniform vec4 uSpheres[${NSPHERES}];  // [x, y, z, radius] for each sphere
+varying vec3 vPos;
+
+struct Material {
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+};
+
+Material sphereMaterial;
+
+// // Function to generate stars in the background
+// vec3 generateStars(vec3 pos) {
+//     float starIntensity = fract(sin(dot(pos.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+//     float starTwinkle = 0.5 + 1.0 * sin(uTime * 5.0 + starIntensity * 100.0);
+//     starIntensity = step(0.9995, starIntensity) * starTwinkle;
+//     return vec3(1.0) * starIntensity;
+// }
+
+// // Function to calculate the background color with stars
+// vec3 getBackgroundColor(vec3 pos) {
+//     vec3 bgColor = mix(mix(vec3(0.1, 0.1, 0.2), vec3(0.2, 0.2, 0.4), (pos.y + 1.0) / 2.0),
+//                        vec3(0.3, 0.3, 0.5), (pos.y + 1.0) / 2.0);
+//     vec3 stars = generateStars(pos);
+//     return bgColor + stars;
+// }
+
+// Function to generate Perlin-like noise
+float noise(vec3 point) { float r = 0.; for (int i=0;i<16;i++) {
+  vec3 D, p = point + mod(vec3(i,i/4,i/8) , vec3(4.0,2.0,2.0)) +
+       1.7*sin(vec3(i,5*i,8*i)), C=floor(p), P=p-C-.5, A=abs(P);
+  C += mod(C.x+C.y+C.z,2.) * step(max(A.yzx,A.zxy),A) * sign(P);
+  D=34.*sin(987.*float(i)+876.*C+76.*C.yzx+765.*C.zxy);P=p-C-.5;
+  r+=sin(6.3*dot(P,fract(D)-.5))*pow(max(0.,1.-2.*dot(P,P)),4.);
+} return .5 * sin(r); }
+
+
+float turbulence(vec3 P) {
+   float f = 0., s = 1.;
+   for (int i = 0 ; i < 9 ; i++) {
+      f += abs(noise(s * P)) / s;
+      s *= 2.;
+      P = vec3(.866*P.x + .5*P.z, P.y + 100., -.5*P.x + .866*P.z);
+   }
+   return f;
+}
+
+// generating stars
+vec3 generateStars(vec3 pos) {
+    // Generate basic star intensity based on position, with fewer stars
+    float starIntensity = fract(sin(dot(pos.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+
+    // Adjust threshold to reduce the number of stars (increase step threshold)
+    starIntensity = step(0.999, starIntensity); // Higher threshold for fewer stars
+
+    // If it's a star, calculate size and twinkle effects
+    if (starIntensity > 0.0) {
+        // Unique time offset for each star
+        float timeOffset = fract(sin(dot(pos.xy, vec2(93.9898, 67.233))) * 43758.5453123);
+
+        // Star twinkle effect with unique time offsets
+        float starTwinkle = 0.5 + 1.0 * sin(uTime * 5.0 + timeOffset * 100.0);
+
+        // Randomize star size based on position
+        float randomSize = 0.5 + fract(sin(dot(pos.xy, vec2(45.233, 79.233))) * 5.0);
+
+        // Star size adjustment, make stars larger and vary the size
+        float starSize = smoothstep(0.998, 1.0, starIntensity) * randomSize;
+
+        // Amplify star intensity based on size and twinkle effect
+        starIntensity = starSize * starTwinkle;
+    }
+
+    // Amplify brightness for stronger stars
+    starIntensity *= 1.5;
+
+    // Return the final star color
+    return vec3(1.0) * starIntensity; // Brighter, larger, and randomized size stars
+}
+
+
+
+// Function to generate a dark sky with small, fragmented nebulae
+vec3 generateNebula(vec3 pos) {
+
+    //generate noise + move the nebula
+    float v = turbulence(pos  + uTime * 0.05);  
+    // 
+    float brightness = smoothstep(0.2, 0.0, v); 
+    
+    // dark bg
+    vec3 nebulaColor = vec3(0.0, 0.0, 0.0);  
+    
+    // slightly bright colors
+    vec3 starryColors = mix(vec3(0.9, 0.7, 0.4), vec3(1.0), brightness * 0.5); // 大部分为金色，少量为白色
+    starryColors = mix(starryColors, vec3(0.9, 0.8, 0.7), pow(brightness, 3.0)); // 控制星云的亮度和碎片化
+
+    nebulaColor = mix(nebulaColor, starryColors, brightness ); 
+    
+    return nebulaColor * brightness;
+}
+
+
+vec3 getBackgroundColor(vec3 pos) {
+    vec3 bgColor = mix(mix(vec3(0.1, 0.1, 0.2), vec3(0.2, 0.2, 0.4), (pos.y + 1.0) / 2.0),
+                       vec3(0.3, 0.3, 0.5), (pos.y + 1.0) / 2.0);
+    vec3 nebula = generateNebula(pos);
+    vec3 star = generateStars(pos); 
+    return bgColor + nebula + star;
+}
+
+float raySphere(vec3 V, vec3 W, vec3 C, float r) {
+    V -= C;
+    float VV = dot(V, V);
+    float VW = dot(V, W);
+    float d = VW * VW - (VV - r * r);
+    if (d > 0.0)
+        return -VW - sqrt(d);
+    return -1.0;
+}
+
+// Generate a random color based on a seed and index
+
+vec3 generateLightColor(float seed, int i) {
+    // Always return red
+    return vec3(1.0, 0.0, 0.0);
+}
+
+void setupMaterial(bool isLightSource, vec3 lightColor) {
+    if (isLightSource) {
+        sphereMaterial.ambient = lightColor;
+        sphereMaterial.diffuse = lightColor;
+        sphereMaterial.specular = vec3(1.0);
+        sphereMaterial.shininess = 64.0;
+    } else {
+        sphereMaterial.ambient = vec3(0.2, 0.2, 0.2);
+        sphereMaterial.diffuse = vec3(1.0, 0.0, 0.0);
+        sphereMaterial.specular = vec3(1.0);
+        sphereMaterial.shininess = 32.0;
+    }
+}
+
+void main(void) {
+    vec3 V = vec3(0.0);
+    vec3 W = normalize(vec3(vPos.xy, -uFL));
+
+    float tMin = 1000.0;
+    vec3 finalColor = getBackgroundColor(vPos);  // Start with the background color
+    bool hitSphere = false;
+
+    float seed;
+
+    // Set seed based on cursor position
+    if (uCursor.x < -0.3 && uCursor.y < -0.3) {
+        seed = 1.0;
+    } else if (uCursor.x < -0.3 && uCursor.y > -0.3) {
+        seed = 2.0;
+    } else if (uCursor.x > -0.3 && uCursor.y > -0.3) {
+        seed = 3.0;
+    } else {
+        seed = 4.0;
+    }
+
+    // Iterate through each sphere
+    for (int i = 0; i < ${NSPHERES}; i++) {
+        vec3 C = uSpheres[i].xyz;
+        float r = uSpheres[i].w;
+        float t = raySphere(V, W, C, r);
+
+        if (t > 0. && t < tMin) {
+            tMin = t;
+            hitSphere = true;  // We hit a sphere, so set this to true
+            vec3 P = V + t * W;
+            vec3 N = normalize(P - C);
+
+            vec3 lightColor = generateLightColor(seed, i);
+            bool isLightSource = (i != 0);
+
+            setupMaterial(isLightSource, lightColor);
+
+            if (isLightSource) {
+                finalColor = sphereMaterial.ambient;
+            } else {
+                vec3 lightContribution = vec3(0.0);
+                for (int j = 1; j < ${NSPHERES}; j++) {
+                    vec3 lightPos = uSpheres[j].xyz;
+                    float lightRadius = uSpheres[j].w;
+                    vec3 L = normalize(lightPos - P);
+                    vec3 E = normalize(-W);
+                    vec3 R = reflect(-L, N);
+
+                    float radiusFactor = lightRadius / distance(P, lightPos);
+                    vec3 diffuse = generateLightColor(seed, j) * max(dot(N, L), 0.0) * radiusFactor;
+                    vec3 specular = sphereMaterial.specular * pow(max(dot(R, E), 0.0), sphereMaterial.shininess) * radiusFactor;
+
+                    lightContribution += diffuse + specular;
+                }
+                finalColor = sphereMaterial.ambient + lightContribution;
+            }
+        }
+    }
+
+    // If we hit a sphere, color it, otherwise leave the background
+    if (hitSphere) {
+        gl_FragColor = vec4(finalColor, 1.0);
+    } else {
+        gl_FragColor = vec4(finalColor, 1.0);  // Background color
+    }
+}
+`;
+
+
+
+// WAIT 100 MSECS BEFORE STARTING UP
+
+setTimeout(() => {
+   let gl = start_gl(canvas1, meshData, vertexSize, vertexShader, fragmentShader);
+
+   // FIND LOCATIONS IN GPU PROGRAM OF UNIFORM VARIABLES
+
+   let uFL       = gl.getUniformLocation(gl.program, "uFL"      ); // 在 shader 中定义了 uniform 变量 uFL，因此需要显式地获取 uFL 的地址 (location)。
+   // gl.getUniformLocation() 会返回一个引用，用于访问这些 uniform 变量。如果着色器中没有声明这个变量，或者名称拼写错误，gl.getUniformLocation() 会返回 null。
+   let uTime     = gl.getUniformLocation(gl.program, "uTime"    );
+   let uCursor   = gl.getUniformLocation(gl.program, "uCursor"  ); 
+   let uSpheres  = gl.getUniformLocation(gl.program, "uSpheres" ); 
+
+   // ANIMATE AND RENDER EACH ANIMATION FRAME
+
+   let startTime = Date.now() / 1000;
+
+   setInterval(() => {
+      // SET ALL UNIFORM VARIABLES
+      let time = Date.now() / 1000 - startTime;
+      gl.uniform1f(uTime, time);   // 设置 uTime 为当前时间。
+      gl.uniform3fv(uCursor, cursor);   // 设置光标位置。
+      gl.uniform1f(uFL, 3); // 设置 uFL 为 3.0。
+
+      let data = [];
+
+      // Sphere 1: Diagonal circular motion from bottom-left to top-right
+      let theta1 = time; // Simple circular motion over time
+      let c1 = .15 * Math.cos(theta1);  // X and Y coordinates
+      let s1 = .15 * Math.sin(theta1);  // Z coordinate
+      let x1 = c1;
+      let y1 = c1;
+      let z1 = -1 + s1;
+      data.push(x1, y1, z1, .07); // Push Sphere 1 position (centered at the origin)
+
+      // // Sphere 2: Moves in the opposite diagonal direction, centered at Sphere 1
+      // let theta2 = time + Math.PI; // Opposite direction (180 degrees phase shift)
+      // let c2 = .15 * Math.cos(theta2);  // Scaled slightly smaller circle for variation
+      // let s2 = .15 * Math.sin(theta2);
+      // let x2 = x1 + c2; // Centered around Sphere 1
+      // let y2 = y1 - c2; // Moves in the opposite diagonal direction
+      // let z2 = z1 + s2;
+      // data.push(x2, y2, z2, .04); // Push Sphere 2 position
+
+      // Sphere 3: Also centered around Sphere 1 but moves in a different phase
+      for (let n = 1; n<5; n++) {
+         let theta =  time + Math.PI - .9 *n// time + Math.PI - .7 * n; 
+         let c = .135 * Math.cos(theta);
+         let s = .135 * Math.sin(theta);
+         let x = x1 + c; // Centered around Sphere 1
+         let y = y1 - c;  // + c3; // Moves diagonally, same center as Sphere 1
+         let z = z1 + s; // Z motion also centered around Sphere 1
+         data.push(x, y, z, .05 - .01*n); // Push Sphere 3 position
+
+      }
+
+      // Pass the data array to the shader
+      gl.uniform4fv(uSpheres, data);  // Send updated sphere positions to the GPU
+
+      for (let n = 0 ; n < meshData.length ; n++) {
+         let mesh = meshData[n].mesh;
+         gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+         gl.drawArrays(meshData[n].type ? gl.TRIANGLE_STRIP : gl.TRIANGLES, 0, mesh.length / vertexSize);
+      }
+
+      }, 30); // Update every 30 milliseconds
+   });
+
+</script>
+</body>
+</html>
