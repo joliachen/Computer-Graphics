@@ -31,7 +31,7 @@ You can view the assignments in the following ways:
    - Clone this repository to your local machine.  
    - Go to the directory for a specific assignment.  
    - Open the corresponding `.html` file using the **Live Server** extension in VS Code within the assignment directory.  
-3. **YouTube** [YouTube Link](https://youtu.be/E_HBfy2Zrv8)  
+3. **YouTube** [YouTube Link]([https://youtu.be/E_HBfy2Zrv8](https://youtu.be/M6d8OuTpxds))  
 
 
 
