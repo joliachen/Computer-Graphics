@@ -17,6 +17,12 @@ You can explore the interactive presentations for each assignment and the final 
 10. [HW9: Drunken Flowers](https://i6.cims.nyu.edu/~zc2745/graphics/hw9/drunken_flowers.html)
 11. [HW10: Coocoo Clock](https://i6.cims.nyu.edu/~zc2745/graphics/hw10/coocooclock.html)
 
+## Final Project
+- [Blossom Chaos](https://i6.cims.nyu.edu/~zc2745/graphics/final_project/blossom_chaos.html)
+Try sliding **Virus Invasion Effects😈** ... 
+- <img width="938" alt="Screenshot 2025-04-22 at 15 46 51" src="https://github.com/user-attachments/assets/8c5e1172-1266-4070-b94a-4fc395ccf371" />
+
+
 # How to View Assignments
 
 You can view the assignments in the following ways:
@@ -25,13 +31,8 @@ You can view the assignments in the following ways:
    - Clone this repository to your local machine.  
    - Go to the directory for a specific assignment.  
    - Open the corresponding `.html` file using the **Live Server** extension in VS Code within the assignment directory.  
+3. **YouTube** [YouTube Link](https://youtu.be/E_HBfy2Zrv8)  
 
-
-## Final Project
-
-- [Blossom Chaos](https://i6.cims.nyu.edu/~zc2745/graphics/final_project/blossom_chaos.html)
-Try sliding **Virus Invasion Effects😈** ... 
-- <img width="938" alt="Screenshot 2025-04-22 at 15 46 51" src="https://github.com/user-attachments/assets/8c5e1172-1266-4070-b94a-4fc395ccf371" />
 
 
 ## Notes
