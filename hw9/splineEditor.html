@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spline Curve Editor</title>
+    <script src="splineEditor.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f1e4e4; 
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        select, button {
+            padding: 8px 12px; 
+            border: 1px solid #ebe0e0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #033e79;
+        }
+        button:disabled {
+            background-color: #dacece;
+            cursor: not-allowed;
+        }
+        /* .delete-btn {
+            background-color: #dc3545;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
+        } */
+        canvas {
+            border: 1px solid #dcd2d2;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .instructions {
+            margin-top: 1px;
+            padding: 1px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <select id="curveType">
+                <option value="hermite">Hermite Spline</option>
+                <option value="bezier">Bezier Curve</option>
+                <option value="bSpline">B-Spline</option>
+                <option value="catmullRom">Catmull-Rom Spline</option>
+            </select>
+            
+            <div class="checkbox-container">
+                <input type="checkbox" id="matchDerivatives" checked>
+                <label for="matchDerivatives">Match Derivatives</label>
+            </div>
+
+            <button id="deletePoint" disabled>Delete Selected Point</button>
+            <button id="clearAll">Clear All</button>
+        </div>
+        <div class="instructions" style="display: flex; gap: 20px;">
+            <h3>Controls:</h3>
+            <ul>
+                <li>Click: Add new point</li>
+                <li>Drag: Move existing point</li>
+                <li>Select + Delete: Remove point</li>  
+                <li>Clear All: Reset canvas</li>
+            </ul>
+
+            <h3>Spline Types:</h3>
+            <ul>
+                <li><strong>Hermite:</strong>
+                    <ul>
+                        <li>Uses 2 points per segment (P0, P1)</li>
+                        <li>Match derivaties: R0: using derivative of previous R1; R1: derivative of prevR1 and currR1</li>
+                        <li>Unmatched: R0 and R1: derivative between P0 and P1 times scale factor</li>
+                    </ul>
+                </li>
+
+                <li><strong>Bezier:</strong>
+                    <ul>
+                        <li>Match derivatives: 2 control points shared between segments (P0 and P3). Choosing proper P1 and P2 to match derivatives</li>
+                        <li>Unmatched: 4 independent points per segment (2 endpoints + 2 controls)</li>
+                    </ul>
+                </li>
+
+                <li><strong>Catmull-Rom & B-Spline:</strong>
+                    <ul>
+                        <li>Match derivatives: Continuous curve through all points</li>
+                        <li>Unmatched: 4-point groups, therefore there is only curve drawn between P1-P2, and straight lines between P0-P1 and P2-P3</li>
+                    </ul>
+                </li>
+            </ul>
+            </div>
+        <canvas id="canvas" width="1000" height="600"></canvas>
+
+       
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // document: refers to the whole webpage
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const curveTypeSelect = document.getElementById('curveType');
+            const matchDerivativesCheckbox = document.getElementById('matchDerivatives');
+            const deleteButton = document.getElementById('deletePoint');
+            const clearButton = document.getElementById('clearAll');
+
+            let points = [];
+            let selectedPoint = null;
+            let isDragging = false;
+
+            function redraw() {
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw control polygon
+                Curves.draw.controlPolygon(ctx, points);
+
+                // Draw curve
+                const curvePoints = Curves.getCurvePoints(
+                    points, 
+                    curveTypeSelect.value, 
+                    matchDerivativesCheckbox.checked
+                );
+                Curves.draw.curve(ctx, curvePoints);
+
+                // Draw control points
+                points.forEach((point, index) => {
+                    Curves.draw.point(ctx, point, {
+                        fill: index === selectedPoint ? '#ff0000' : '#0066cc'
+                    });
+                });
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Check if clicked on existing point
+                let clickedPoint = points.findIndex(point => 
+                    Math.hypot(point.x - x, point.y - y) < 10
+                );
+
+                if (clickedPoint >= 0) {
+                    selectedPoint = clickedPoint;
+                    isDragging = true;
+                    deleteButton.disabled = false;
+                } else {
+                    points.push({ x, y });
+                    selectedPoint = null;
+                    deleteButton.disabled = true;
+                }
+
+                redraw();
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (isDragging && selectedPoint !== null) {
+                    const rect = canvas.getBoundingClientRect();
+                    points[selectedPoint] = {
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top
+                    };
+                    redraw();
+                }
+            });
+
+            canvas.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                isDragging = false;
+            });
+
+            deleteButton.addEventListener('click', () => {
+                if (selectedPoint !== null) {
+                    points.splice(selectedPoint, 1);
+                    selectedPoint = null;
+                    deleteButton.disabled = true;
+                    redraw();
+                }
+            });
+
+            clearButton.addEventListener('click', () => {
+                points = [];
+                selectedPoint = null;
+                deleteButton.disabled = true;
+                redraw();
+            });
+
+            curveTypeSelect.addEventListener('change', redraw);
+            matchDerivativesCheckbox.addEventListener('change', redraw);
+
+            // Initial draw
+            redraw();
+        });
+    </script>
+</body>
+</html>

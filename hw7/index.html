@@ -1,0 +1,306 @@
+<body bgcolor=#ffffff>
+
+<!! EXPLICITLY POSITION THE CANVAS TO WHERE WE WANT IT TO APPEAR ON THE SCREEN>
+
+<canvas id='canvas1' width=800 height=800 style="position:absolute;left:350;top:70"></canvas>
+<table><tr><td>
+
+<!! INTERACTIVE HTML BUTTONS TO SELECT DIFFERENT PARTS OF THE VEHICLE>
+
+<button><font color=#ff8080 size=10 onmousedown=down('g') onmouseup=up()>Gears</font></button> <br>
+<button><font color=#60e060 size=10 onmousedown=down('c') onmouseup=up()>Circuit board</font></button> <br>
+<button><font color=#00a0ff size=10 onmousedown=down('b') onmouseup=up()>Batteries</font></button> <br>
+<button><font color=#e000ff size=10 onmousedown=down('m') onmouseup=up()>Motors</font></button> <br>
+<button><font color=#606060 size=10 onmousedown=down('o') onmouseup=up()>Omniwheels</font></button>
+
+<!! AN INTERACTIVE HTML SLIDER TO CONTROL ANIMATED SPIN>
+
+<td width=110><td valign=top><br>
+<font face=helvetica size=5>
+SPIN: <input type=range id=speed style="width: 400"></input>
+
+<!! SHOW A PHOTO OF AN ACTUAL OMNIWHEEL>
+
+<tr height=100>
+<tr><td><img src=omniwheel.jpg width=350>
+
+</table>
+<script>
+
+// MATRIX SUPPORT LIBRARY
+
+let mInverse = m => {
+   let d = [], de = 0, co = (c, r) => {
+      let s = (i, j) => m[c+i & 3 | (r+j & 3) << 2];
+      return (c+r & 1 ? -1 : 1) * ( (s(1,1) * (s(2,2) * s(3,3) - s(3,2) * s(2,3)))
+                                  - (s(2,1) * (s(1,2) * s(3,3) - s(3,2) * s(1,3)))
+                                  + (s(3,1) * (s(1,2) * s(2,3) - s(2,2) * s(1,3))) );
+   }
+   for (let n = 0 ; n < 16 ; n++) d.push(co(n >> 2, n & 3));
+   for (let n = 0 ; n <  4 ; n++) de += m[n] * d[n << 2]; 
+   for (let n = 0 ; n < 16 ; n++) d[n] /= de;
+   return d;
+}
+let mxm = (a, b) => {
+   let d = [];
+   for (let n = 0 ; n < 16 ; n++)
+      d.push(a[n&3]*b[n&12] + a[n&3|4]*b[n&12|1] + a[n&3|8]*b[n&12|2] + a[n&3|12]*b[n&12|3]);
+   return d;
+}
+let C = t => Math.cos(t), S = t => Math.sin(t);
+let mId = () => [ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 ];
+let mPe = (fl, m) => mxm(m, [1,0,0,0, 0,1,0,0, 0,0,1,-1/fl, 0,0,0,1]);
+let mRX = (t, m) => mxm(m, [1,0,0,0, 0,C(t),S(t),0, 0,-S(t),C(t),0, 0,0,0,1]);
+let mRY = (t, m) => mxm(m, [C(t),0,-S(t),0, 0,1,0,0, S(t),0,C(t),0, 0,0,0,1]);
+let mRZ = (t, m) => mxm(m, [C(t),S(t),0,0, -S(t),C(t),0,0, 0,0,1,0, 0,0,0,1]);
+let mSc = (x,y,z, m) => mxm(m, [x,0,0,0, 0,y,0,0, 0,0,z,0, 0,0,0,1]);
+let mTr = (x,y,z, m) => mxm(m, [1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]);
+function Matrix() {
+   let stack = [mId()], top = 0;
+   let set = arg => { stack[top] = arg; return this; }
+   let get = () => stack[top];
+   this.identity = () => set(mId());
+   this.perspective = fl => set(mPe(fl, get()));
+   this.turnX = t => set(mRX(t, get()));
+   this.turnY = t => set(mRY(t, get()));
+   this.turnZ = t => set(mRZ(t, get()));
+   this.scale = (x,y,z) => set(mSc(x,y?y:x,z?z:x, get()));
+   this.move = (x,y,z) => set(mTr(x,y,z, get()));
+   this.get = () => get();
+   this.S = () => set(stack[top++].slice());
+   this.R = () => --top;
+   this.draw = (shape,color,opacity) => draw(shape,color,opacity);
+}
+
+// INITIALIZE WEBGL
+
+let start_gl = (canvas, vertexSize, vertexShader, fragmentShader) => {
+   let gl = canvas.getContext("webgl");
+   let program = gl.createProgram();
+   gl.program = program;
+   let addshader = (type, src) => {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (! gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+         throw "Cannot compile shader:\n\n" + gl.getShaderInfoLog(shader);
+      gl.attachShader(program, shader);
+   };
+   addshader(gl.VERTEX_SHADER  , vertexShader  );
+   addshader(gl.FRAGMENT_SHADER, fragmentShader);
+   gl.linkProgram(program);
+   if (! gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw "Could not link the shader program!";
+   gl.useProgram(program);
+   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+   gl.enable(gl.DEPTH_TEST);
+   gl.enable(gl.BLEND);
+   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+   gl.depthFunc(gl.LEQUAL);
+   let vertexAttribute = (name, size, position) => {
+      let attr = gl.getAttribLocation(program, name);
+      gl.enableVertexAttribArray(attr);
+      gl.vertexAttribPointer(attr, size, gl.FLOAT, false, vertexSize * 4, position * 4);
+   }
+   vertexAttribute('aPos', 3, 0);
+   vertexAttribute('aNor', 3, 3);
+   return gl;
+}
+
+// IMPLEMENT VARIOUS 3D SHAPES
+
+let createMesh = (nu, nv, p) => {
+   let mesh = [];
+   for (let j = nv-1 ; j >= 0 ; j--) {
+      for (let i = 0 ; i <= nu ; i++)
+         mesh.push(p(i/nu,(j+1)/nv), p(i/nu,j/nv));
+      mesh.push(p(1,j/nv), p(0,j/nv));
+   }
+   return new Float32Array(mesh.flat());
+}
+let sphere = (nu, nv) => createMesh(nu, nv, (u,v) => {
+   let theta = 2 * Math.PI * u;
+   let phi = Math.PI * (v - .5);
+   let x = C(phi) * C(theta),
+       y = C(phi) * S(theta),
+       z = S(phi);
+   return [ x,y,z, x,y,z ];
+});
+let tube = (nu, nv) => createMesh(nu, nv, (u,v) => {
+   let x = C(2 * Math.PI * u),
+       y = S(2 * Math.PI * u),
+       z = 2 * v - 1;
+   return [ x,y,z, x,y,0 ];
+});
+let disk = (nu, nv) => createMesh(nu, nv, (u,v) => {
+   let x = v * C(2 * Math.PI * u),
+       y = v * S(2 * Math.PI * u);
+   return [ x,y,0, 0,0,1 ];
+});
+let cylinder = (nu, s) => createMesh(nu, 6, (u,v) => {
+   s = s ? s : 1;
+   let x = C(2 * Math.PI * u),
+       y = S(2 * Math.PI * u);
+   switch (5 * v >> 0) {
+   case 0: return [ 0,0,-1, 0,0,-1 ];
+   case 1: return [ x,y,-1, 0,0,-1 ];
+   case 2: return [ x,y,-1, x,y, 0 ];
+   case 3: return [ s*x,s*y, 1, x,y, 0 ];
+   case 4: return [ s*x,s*y, 1, 0,0, 1 ];
+   case 5: return [ 0,0, 1, 0,0, 1 ];
+   }
+});
+let torus = (nu, nv, r) => createMesh(nu, nv, (u,v) => {
+   r = r ? r : .5;
+   let ct = C(2 * Math.PI * u);
+   let st = S(2 * Math.PI * u);
+   let cp = C(2 * Math.PI * v);
+   let sp = S(2 * Math.PI * v);
+   let x = (1 + r * cp) * ct,
+       y = (1 + r * cp) * st,
+       z =      r * sp;
+   return [ x,y,z, cp*ct,cp*st,sp ];
+});
+let strToTris = s => {
+   let t = [], i;
+   for (let n = 0 ; n < s.length ; n++)
+      if ((i = 'N0P'.indexOf(s.charAt(n))) >= 0)
+         t.push(i-1);
+   return t;
+}
+let cube = strToTris(`PNP00P PPP00P NPP00P  NPP00P NNP00P PNP00P
+                      NPN00N PPN00N PNN00N  PNN00N NNN00N NPN00N
+                      PPNP00 PPPP00 PNPP00  PNPP00 PNNP00 PPNP00
+                      NNPN00 NPPN00 NPNN00  NPNN00 NNNN00 NNPN00
+                      NPP0P0 PPP0P0 PPN0P0  PPN0P0 NPN0P0 NPP0P0
+                      PNN0N0 PNP0N0 NNP0N0  NNP0N0 NNN0N0 PNN0N0`);
+
+// API FOR ACCESSING 3D SHAPES
+
+let Cube       = ()    => { return { type: 0, mesh: cube }; }
+let Cylinder   = (n,s) => { return { type: 1, mesh: cylinder(n,s) }; }
+let Disk       = n     => { return { type: 1, mesh: disk    (n, 1) }; }
+let Sphere     = n     => { return { type: 1, mesh: sphere  (n, n/2>>0) }; }
+let Torus      = (n,r) => { return { type: 1, mesh: torus   (n, n, r) }; }
+let Tube       = n     => { return { type: 1, mesh: tube    (n, 1) }; }
+
+// GPU SHADERS
+
+let vertexSize = 6;
+let vertexShader = `
+   attribute vec3 aPos, aNor;
+   uniform mat4 uMatrix, uInvMatrix;
+   varying vec3 vPos, vNor;
+   void main() {
+      vec4 pos = uMatrix * vec4(aPos, 1.0);
+      vec4 nor = vec4(aNor, 0.0) * uInvMatrix;
+      vPos = pos.xyz;
+      vNor = nor.xyz;
+      gl_Position = pos * vec4(1.,1.,-.1,1.);
+   }
+`;
+let fragmentShader = `
+   precision mediump float;
+   uniform vec3 uColor;
+   uniform float uOpacity;
+   varying vec3 vPos, vNor;
+   void main(void) {
+      float c = .05 + max(0., dot(normalize(vNor), vec3(.57)));
+      gl_FragColor = vec4(sqrt(c * uColor), uOpacity);
+   }
+`;
+
+// DECLARE GL-RELATED VARIABLES AND MATRIX OBJECT
+
+let gl = start_gl(canvas1, vertexSize, vertexShader, fragmentShader);
+let uColor     = gl.getUniformLocation(gl.program, "uColor"    );
+let uOpacity   = gl.getUniformLocation(gl.program, "uOpacity"  );
+let uInvMatrix = gl.getUniformLocation(gl.program, "uInvMatrix");
+let uMatrix    = gl.getUniformLocation(gl.program, "uMatrix"   );
+let M = new Matrix();
+
+// DRAW A SINGLE SHAPE TO THE WEBGL CANVAS
+
+let draw = (Shape, color, opacity) => {
+   gl.uniform1f       (uOpacity  , opacity===undefined ? 1 : opacity);
+   gl.uniform3fv      (uColor    , color );
+   gl.uniformMatrix4fv(uInvMatrix, false, mInverse(M.get()));
+   gl.uniformMatrix4fv(uMatrix   , false, M.get()          );
+   gl.bufferData(gl.ARRAY_BUFFER, Shape.mesh, gl.STATIC_DRAW);
+   gl.drawArrays(Shape.type ? gl.TRIANGLE_STRIP : gl.TRIANGLES, 0, Shape.mesh.length / vertexSize);
+   return M;
+}
+
+// THE USER DRAGS THE MOUSE TO VARY rx AND ry
+
+let mx, my, rx = 0, ry = 0;
+canvas1.onmousedown = e => { mx = e.clientX; my = e.clientY; }
+canvas1.onmousemove = e => { if (mx) { rx += e.clientX - mx; ry += e.clientY - my; mx = e.clientX; my = e.clientY; } }
+canvas1.onmouseup = e => mx = undefined;
+
+// DEFINE COLORS FOR ALL THE 3D PARTS
+
+let batteryColor = [0,.4,1];
+let boardColor   = [.1,.3,.1];
+let caseColor    = [0,0,0];
+let gearColor    = [1,.25,.25];
+let motorColor   = [1,0,1];
+let wheelColor   = [.1,.1,.1];
+let rimColor     = [1,1,1];
+
+// IMPLEMENT PART SELECTION (TRIGGERED BY THE HTML BUTTONS)
+
+let selected = '';
+let down = a => selected = a;
+let up = () => selected = '';
+let s = a => selected == '' ? 1 : selected != a ? .5 : 1;
+
+let time = Date.now() / 1000, t = 0;
+
+function drawFrame() {
+   requestAnimationFrame(drawFrame);
+
+   // RATE OF TIME ADVANCEMENT IS THROTTLED BY THE SPIN SLIDER
+
+   let newTime = Date.now() / 1000;
+   t += (newTime - time) * (speed.value - 50) / 25;
+   if (Math.abs(speed.value - 50) < 5)
+      speed.value = 50;
+   time = newTime;
+
+   // DRAW THE VEHICLE FOR THIS ANIMATION FRAME
+
+   M.S().perspective(3).turnX(ry/100).turnY(rx/100).turnX(-Math.PI/2).move(0,0,-.2).scale(2).turnZ(t);
+      for (let i = 0 ; i < 3 ; i++) {
+         M.S().turnZ(2*Math.PI*i/3);
+            M.S().move(.04,0,.2).turnY(Math.PI/2).turnX(.45*Math.PI).move(0,0,.03).scale(.015,.015,.01).draw(Cylinder(20,2), gearColor, s('g')).R();
+            M.S().move(.04,0,.18).scale(.04,.04,.01).draw(Cylinder(20,.5), gearColor, s('g')).R();
+            M.S().move(.04,0,.11).scale(.01,.01,.07).draw(Cylinder(20   ), gearColor, s('g')).R();
+            M.S().move(.04,0,.05).scale(.015,.015,.01).draw(Cylinder(20,2), gearColor, s('g')).R();
+            M.S().move(.063,0,0).turnY(Math.PI/2).scale(.04,.04,.007).draw(Cylinder(30,1.45), gearColor, s('g')).R();
+            M.S().move(.095,0,0).turnY(Math.PI/2).scale(.01,.01,.025).draw(Cylinder(30     ), gearColor, s('g')).R();
+         M.R();
+      }
+      for (let i = 0 ; i < 3 ; i++) {
+         M.S().turnZ(2*Math.PI*i/3);
+            M.S().move(.04,0,.2).turnY(Math.PI/2).turnX(.45*Math.PI).move(0,0,.15).scale(.08,.08,.05).draw(Cylinder(20), motorColor, s('m')).R();
+            M.S().move(.04,0,.2).turnY(Math.PI/2).turnX(.45*Math.PI).move(0,0,.09).scale(.01,.01,.05).draw(Cylinder(20), motorColor, s('m')).R();
+            M.S().turnZ(-.1).move(.17,0,.21).scale(.07,.07,.06).draw(Cylinder(30), batteryColor, s('b')).R();
+	    for (let j = 0 ; j < 4 ; j++) {
+               M.S().move(.126,0,0).turnX( j    *Math.PI/2-t).move(0,.1,0).scale(.006,.006,.013).draw(Torus(30,5),wheelColor, s('o')).R();
+               M.S().move(.190,0,0).turnX((j+.5)*Math.PI/2-t).move(0,.1,0).scale(.006,.006,.013).draw(Torus(30,5),wheelColor, s('o')).R();
+            }
+         M.R();
+      }
+      for (let i = 0 ; i < 3 ; i++) {
+         M.S().turnZ(2*Math.PI*i/3);
+            M.S().move(.158,0,0).turnY(Math.PI/2).scale(.12,.12,.04).draw(Cylinder(30), wheelColor, .7 * s('o')).R();
+         M.R();
+      }
+      M.S().move(0,0,.31).scale(.25,.25,.005).draw(Cylinder(30), boardColor, .7 * s('c')).R();
+      M.S().move(0,0,.11).scale(.26,.26,.21).draw(Tube(30), caseColor, .3).R();
+   M.R();
+}
+requestAnimationFrame(drawFrame);
+</script>
+

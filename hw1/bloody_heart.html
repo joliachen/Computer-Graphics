@@ -1,0 +1,146 @@
+<script src=lib1.js></script>
+
+<body bgcolor=black text=white link=white alink=white vlink=white>
+<center>
+<canvas id='canvas1' width=400 height=400></canvas>
+</center>
+</body>
+
+
+<!!-------- VERTEX SHADER: YOU PROBABLY DON'T WANT TO CHANGE THIS RIGHT NOW -------->
+
+<script id='my_vertex_shader' type='x-shader/x-vertex'>
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.);
+      vPos = aPos;
+   }
+</script>
+
+
+<!!-------- FRAGMENT SHADER: THIS IS WHERE YOU WILL DO YOUR WORK -------->
+
+<script id='my_fragment_shader' type='x-shader/x-fragment'>
+   uniform float uTime;   
+   varying vec3 vPos;     // -1 < vPos.x < +1, -1 < vPos.y < +1, vPos.z == 0
+   
+   // Wave function for edge distortion
+   float wave(float distance, float frequency, float speed, float phase) {
+       return 0.1 * sin(distance * frequency + uTime * speed + phase);
+   }
+   
+   // Check: position in / not in the heart
+   float heartShape(vec2 position) {
+       float x = position.x * 1.5; 
+       float y = position.y * 1.5;
+       return pow(x * x + y * y - 1.0, 3.0) - x * x * y * y * y; // <=0: inside the heart
+   }
+   
+   void main() {
+      
+      //BACKGROUND
+      vec3 backgroundColor = vec3(
+         0.5 + 0.2 * cos(3.0 * vPos.x + uTime),
+         0.5 + 0.2 * cos(3.0 * vPos.y + uTime + 2.0),
+         0.5 + 0.2 * cos(3.0 * vPos.x + uTime + 4.0)
+      );
+   
+      // CALCULATE DIST (current position, edge of heart)
+      float heartDist = heartShape(vPos.xy); 
+   
+      float borderWave = 0.1 * wave(heartDist * 0.5, 50.0, 10.0, 0.0); 
+   
+      float borderThickness = 0.02 + borderWave; // Edge thickness
+   
+      vec3 heartColor;
+   
+      // HEART
+      if (heartDist < borderThickness * 0.01 && heartDist > -borderThickness) {
+          heartColor = vec3(1.0, 0.0, 0.0);  // Border 
+      } else if (heartDist < -borderThickness) {
+          heartColor = vec3(1.,  sin(3.*uTime) ,  cos(3.*uTime));  // Core color
+      } else {
+          heartColor = backgroundColor;  
+      }
+
+      gl_FragColor = vec4(heartColor, 1.0);
+   }
+   
+</script>
+
+
+<!!-------- CREATE A PROPERLY DESCRIPTIVE TITLE BELOW -------->
+
+<script id='my_title' type='text/html'>
+THIS IS A VERY STRONG HEART❤️.
+</script>
+
+
+<!!-------- HERE IS WHERE YOU CAN PROVIDE A LONGER TEXT DESCRIPTION -------->
+
+<script id='my_instructions' type='text/html'><font color=#b0b0b0>
+
+<br>
+Bloody Heart
+</script>
+
+
+<!!-------- YOU PROBABLY DON'T WANT TO CHANGE ANYTHING BELOW FOR NOW -------->
+   
+<script>
+
+// CREATE THE HTML DOCUMENT
+
+let vs = my_vertex_shader.innerHTML,
+    fs = my_fragment_shader.innerHTML;
+    fs = fs.substring(1, fs.length);
+
+document.body.innerHTML = [''
+   ,'<center><font size=6 color=#b0b0b0>' + my_title.innerHTML + '</center>'
+   ,'<TABLE cellspacing=0 cellpadding=0><TR>'
+   ,'<td width=50></td><td><font color=red size=5><div id=errorMessage>&nbsp;</div></font></td>'
+   ,'</TR><TR>'
+   ,'<table cellspacing=10>'
+   ,'<tr>'
+   ,'<td valign=top><font size=2 color=red><div id=errorMarker>&nbsp;</div></font></td>'
+   ,'<td valign=top>'
+   ,'<textArea id=textArea spellcheck=false '
+   ,'style="font:16px courier;outline-width:0;border-style:none;resize:none;overflow:scroll;"'
+   ,'></textArea>'
+   ,'</td><td valign=top>' + document.body.innerHTML + '</td>'
+   ,'<td valign=top><font size=5>' + my_instructions.innerHTML + '</td>'
+   ,'</tr></table>'
+   ,'</TR></TABLE>'
+   ].join('');
+
+// SET UP THE EDITABLE TEXT AREA ON THE LEFT SIDE.
+
+let text = fs.split('\n'), cols = 0;
+for (let i = 0 ; i < text.length ; i++)
+   cols = Math.max(cols, text[i].length);
+
+textArea.rows = text.length;
+textArea.cols = cols;
+textArea.value = fs;
+textArea.style.backgroundColor = '#202020';
+textArea.style.color = 'white';
+
+// REPARSE THE SHADER PROGRAM AFTER EVERY KEYSTROKE.
+
+textArea.onkeyup = function() { canvas1.setShaders(vs, this.value); }
+
+// SET THE CURRENT TIME IN SECONDS BEFORE RENDERING EACH FRAME.
+
+let startTime = Date.now();
+
+function animate(gl) {
+   let time = (Date.now() - startTime) / 1000;
+   setUniform('1f', 'uTime', time);
+}
+
+// START EVERYTHING.
+
+gl_start(canvas1, vs, fs);
+</script>
+

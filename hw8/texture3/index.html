@@ -1,0 +1,80 @@
+<body bgcolor=#ffffff>
+   <div style="display: flex; align-items: start;">
+       <div>
+           <canvas id=textureCanvas width=512 height=512 style=position:absolute;left:-1000></canvas>
+           <canvas id=canvas1 width=800 height=800></canvas>
+       </div>
+       <div style="margin-left: 20px; padding: 20px; background-color: #f5f5f5; border-radius: 8px;">
+           <h1 style="color: #333; font-size: 24px; margin-bottom: 10px;">Evil gardenia</h1>
+           <p style="color: #333; font-size: 16px; margin-bottom: 20px;">Hold and drag your mouse to explore different angles.</p>
+           
+           <h2 style="color: #444; font-size: 18px; margin-bottom: 10px;">References:</h2>
+           <ul style="color: #666; font-size: 14px; line-height: 1.6; list-style-type: none; padding-left: 0;">
+               <li style="margin-bottom: 8px;">• Water texture: <a href="https://www.cgtrader.com/free-3d-models/textures/natural-textures/water-texture-4k" style="color: #0066cc; text-decoration: none;">CGTrader</a></li>
+               <li style="margin-bottom: 8px;">• Flower petal texture: <a href="https://www.filterforge.com/filters/7932-normal.html" style="color: #0066cc; text-decoration: none;">Filter Forge</a></li>
+               <li style="margin-bottom: 8px;">• Flower stamen texture: <a href="https://cpetry.github.io/NormalMap-Online/" style="color: #0066cc; text-decoration: none;">NormalMap Online</a></li>
+               <li style="margin-bottom: 8px;">• Grass texture: <a href="https://www.cgtrader.com/free-3d-models/plant/grass/green-lawn-8d4341d7-6281-40e9-8872-d429512a3b3b" style="color: #0066cc; text-decoration: none;">CGTrader</a></li>
+               <li style="margin-bottom: 8px;">• Soil texture: <a href="https://pixabay.com/vectors/minecraft-texture-earth-model-5820118/" style="color: #0066cc; text-decoration: none;">Pixabay</a></li>
+           </ul>
+       </div>
+   </div>
+   <script src=lib.js></script>
+
+<script>
+
+
+let mx, my, rx = 0, ry = 0;
+canvas1.onmousedown = e => { mx = e.clientX; my = e.clientY; }
+canvas1.onmousemove = e => { if (mx) { rx += e.clientX - mx; ry += e.clientY - my; mx = e.clientX; my = e.clientY; } }
+canvas1.onmouseup = e => mx = undefined;
+
+
+texture(0, 'earth.png');
+texture(3, 'albedo_circle.png');
+texture(4, 'nor_circle.png');
+texture(5, 'albedo_water.png');
+texture(6, 'nor_water.png');
+texture(7, 'grass.jpg');
+texture(8, "nor_flower.png")
+
+// albedo map， roughness map， normal map， displacement map 
+function drawFrame() {
+   requestAnimationFrame(drawFrame);
+   let t = Date.now() / 1000;
+   gl.uniform1f(uTime, t);
+   
+   // CHANGE THE CONTENT OF THE 2D CANVAS EVERY ANIMATION FRAME.
+
+   let ctx = textureCanvas.getContext('2d');
+   ctx.fillStyle = '#ffd0d0';
+   ctx.fillRect(0, 0, 512, 512);
+   ctx.fillStyle = 'black';
+   ctx.font = '100px Arial';
+   let minutes = (t/60>>0)%60, seconds = t%60>>0;        // FORMAT TIME TO MINUTES & SECONDS.
+   ctx.fillText(minutes + 'm ' + seconds + 's', 60, 280);
+
+   M.S().perspective(3).move(.1,0,-.6).turnX(Math.PI/15).turnY(-Math.PI/10).scale(.5).turnX(ry/100).turnY(rx/100).turnX(-Math.PI/2).move(0,0,-.2);
+       // (shape,color,opacity,texture,bumpTexture)
+      
+       M.S().move(-.05,-.5, 0.65+ .1 * Math.cos((t-.4)*3));
+         M.S().scale(.2).turnZ(Math.PI/2).draw(Sphere(50,50), [0/255,120/255, 30/255] , 1,  -1,  4).R(); // flower core
+         M.S().move(0,.2,.0);
+         for(let i=0; i<6; i++){  // flower petal
+            M.S().turnY((i+1) * Math.PI/3).move(0,0,.3).scale(.2,.1,.3).draw(Sphere(50,50), [0/255,120/255,204/255], 1, -1, 8).R();
+         }
+         M.R();
+       M.R();
+
+      M.S().move(-.05,-.5,-.1 + .1 * Math.cos((t-.2)*3)).scale(.4,.4,.1).draw(Sphere(50,50)  ,[1,1,1] , 1,  7  ).R(); // grass
+      M.S().move(-.05,-.5,-.3 + .1 * Math.cos(t*3)).scale(.5,.5,.2).draw(Sphere(50,50)   , [1, 1, 1] ,  1,  0    ).R(); // earth
+   
+      // M.S().move( .2,-.3,0).scale(.2).draw(Cube()   , [204/255,102/255, 0] , 1,  3,  4).R(); //  circle
+      M.S().move( .0,-.6,-.5).scale(1.3,1.3, .2).draw(Cube()   , [1,1,1] , 0.95,  5,  6).R(); //  water
+      M.S().turnX(Math.PI/2).move( -.05,.7,-.2).scale(1.,1., .2).draw(Tube(50)   , [0/255,240/255, 30/255]  , 0.95,  5,  6).R(); 
+
+   M.R();
+}
+requestAnimationFrame(drawFrame);
+
+</script>
+

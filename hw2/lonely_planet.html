@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spheres with a Floating Hand</title>
+    <style>
+        body { 
+            margin: 0;
+            background: linear-gradient(to bottom, white, rgb(114, 105, 160), rgb(121, 121, 203)); /* 白色到浅黄色到浅粉色渐变 */
+        }
+        canvas { display: block; margin: auto; }
+    </style>
+</head>
+<body>
+   <style>
+      body {
+          margin: 0;
+          font-family: Arial, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+      }
+      #content {
+          display: flex;
+          width: 100%;
+          max-width: 1200px;
+          align-items: center;
+      }
+      #canvas1 {
+          border: 1px solid #000;
+          flex-shrink: 0; /* 确保 canvas 不会缩小 */
+      }
+      .text-container {
+          flex-grow: 1;
+          padding-left: 20px;
+      }
+  </style>
+</head>
+<body>
+  <div id="content">
+      <canvas id='canvas1' width=800 height=800></canvas>
+      <div class="text-container">
+        <h1>Lonely Planet 💙</h1>
+          <p>Inspired by 
+              <a href="https://eng.libretexts.org/Bookshelves/Computer_Science/Applied_Programming/Book%3A_Introduction_to_Computer_Graphics_(Eck)/04%3A_OpenGL_1.1-_Light_and_Material/4.02%3A_Light_and_Material_in_OpenGL_1.1#:~:text=Material%20properties%20are%20vertex%20attributes%20in%20that%20same,properties%20is%20stored%2C%20along%20with%20the%20vertex%20coordinates." 
+                 target="_blank">David J. Eck</a>
+          </p>
+      </div>
+  </div>
+<script>
+// INITIALIZE GPU PROGRAM
+let start_gl = (canvas, meshData, vertexSize, vertexShader, fragmentShader) => {
+   let gl = canvas.getContext("webgl");
+   let program = gl.createProgram();
+   gl.program = program;
+   let addshader = (type, src) => {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (! gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+         throw "Cannot compile shader:\n\n" + gl.getShaderInfoLog(shader);
+      gl.attachShader(program, shader);
+   };
+   addshader(gl.VERTEX_SHADER  , vertexShader  );
+   addshader(gl.FRAGMENT_SHADER, fragmentShader);
+   gl.linkProgram(program);
+   if (! gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw "Could not link the shader program!";
+
+   gl.useProgram(program);
+
+   // gl.uniform3fv(uLightColorsLocation, flatLightColors); // after activate the containers of shaders, pass the ulightcolor to shaders
+
+   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+   gl.enable(gl.DEPTH_TEST);
+   gl.depthFunc(gl.LEQUAL);
+   let vertexAttribute = (name, size, position) => {
+      let attr = gl.getAttribLocation(program, name);
+      gl.enableVertexAttribArray(attr);
+      gl.vertexAttribPointer(attr, size, gl.FLOAT, false, vertexSize * 4, position * 4);
+   }
+   vertexAttribute('aPos', 3, 0);
+   return gl;
+}
+
+// LOGIC TO TRACK THE CURSOR
+
+let r = canvas1.getBoundingClientRect(), cursor = [0,0,0];
+let setCursor = (e, z) => cursor = [ (e.clientX - r.left) / canvas1.width * 2 - 1,
+                                     1 - (e.clientY - r.top) / canvas1.height * 2,
+                                     z !== undefined ? z : cursor[2] ];
+canvas1.onmousedown = e => setCursor(e, 1);
+canvas1.onmousemove = e => setCursor(e);
+canvas1.onmouseup   = e => setCursor(e, 0);
+
+// TRIANGLE DATA (IN THIS CASE, ONE SQUARE)
+
+let meshData = [
+   { type: 1, mesh: new Float32Array([ -1,1,0, 1,1,0, -1,-1,0, 1,-1,0 ]) },
+];
+
+const NSPHERES = 2;
+
+// VERTEX AND FRAGMENT SHADERS
+let vertexSize = 3;
+let vertexShader = `
+   attribute vec3 aPos;
+   varying   vec3 vPos;
+   void main() {
+      gl_Position = vec4(aPos, 1.0);
+      vPos = aPos;
+   }
+`;
+
+let fragmentShader = `
+precision mediump float;
+uniform float uTime, uFL;
+uniform vec3 uCursor;
+uniform vec4 uSpheres[${NSPHERES}]; 
+varying vec3 vPos;
+
+float noise(vec3 point) { 
+    float r = 0.;
+    for (int i=0; i<16; i++) {
+        vec3 D, p = point + mod(vec3(i, i/4, i/8), vec3(4.0, 2.0, 2.0)) + 1.7 * sin(vec3(i, 5 * i, 8 * i)), 
+        C = floor(p), P = p - C - 0.5, A = abs(P);
+        C += mod(C.x + C.y + C.z, 2.) * step(max(A.yzx, A.zxy), A) * sign(P);
+        D = 34. * sin(987. * float(i) + 876. * C + 76. * C.yzx + 765. * C.zxy);
+        P = p - C - 0.5;
+        r += sin(6.3 * dot(P, fract(D) - 0.5)) * pow(max(0., 1. - 2. * dot(P, P)), 4.);
+    }
+    return 0.5 * sin(r);
+}
+
+float turbulence(vec3 P) {
+    float f = 0., s = 1.;
+    for (int i = 0; i < 9; i++) {
+        f += abs(noise(s * P)) / s;
+        s *= 2.;
+        P = vec3(0.866 * P.x + 0.5 * P.z, P.y + 100., -0.5 * P.x + 0.866 * P.z);
+    }
+    return f;
+}
+
+vec3 getBackgroundColor(vec3 pos) {
+    float v = turbulence(pos + uTime * 0.05);
+    float s = sqrt(0.5 + 0.5 * sin(20. * pos.y + 8. * v));
+    return vec3(0.2, 0.4, 0.8) * vec3(s, s * s, s * s * s);  
+}
+
+float raySphere(vec3 V, vec3 W, vec3 C, float r) {
+    V -= C;
+    float VV = dot(V, V);
+    float VW = dot(V, W);
+    float d = VW * VW - (VV - r * r);
+    if (d > 0.0)
+        return -VW - sqrt(d);
+    return -1.0;
+}
+
+vec3 generateLightColor(float seed) {
+vec3 colors[4];
+    return vec3(max(uCursor.x * 2420.0 / 255.0, 0.) , max(uCursor.y * 2200.0 / 255.0, .5), uCursor.y * 2400.0 / 255.0);
+}
+
+void main(void) {
+    // RAY FROM THIS PIXEL
+    vec3 V = vec3(0.);  
+    vec3 W = normalize(vec3(vPos.xy, -uFL));  // Ray direction (adjust based on the camera)
+
+    // Compute background color (noise)
+    vec3 finalColor = getBackgroundColor(vPos);  
+    vec3 sphereColor = vec3(0.0); 
+    bool hitSphere = false;  
+
+    float tMin = 1000.0;
+    float seed;
+
+    // FOUR REGIONS OF COLORS BASED ON CURSOR
+    if (uCursor.x < -0.3 && uCursor.y < -0.3) {
+        seed = 1.0;
+    } else if (uCursor.x < -0.3 && uCursor.y > -0.3) {
+        seed = 2.0;
+    } else if (uCursor.x > -0.3 && uCursor.y > -0.3) {
+        seed = 3.0;
+    } else {
+        seed = 4.0;
+    }
+
+
+    for (int i = 0; i < ${NSPHERES}; i++) {
+        vec3 C = uSpheres[i].xyz;  // Center of the sphere
+        float r = uSpheres[i].w;   // Radius of the sphere
+    
+        float t = raySphere(V, W, C, r);  // Check if the eye ray hits the sphere
+
+        if (t > 0. && t < tMin) {  // If there's an intersection (we can see the sphere)
+            tMin = t;
+            hitSphere = true;
+            vec3 P = V + t * W;  // Intersection point
+            vec3 N = normalize(P - C);  
+
+            vec3 lightColor = generateLightColor(seed);
+            bool isLightSource = (i == 1);  
+
+            if (isLightSource) {
+                sphereColor = lightColor;  
+            } else { 
+                vec3 lightPos = uSpheres[1].xyz;  
+                float lightRadius = uSpheres[1].w;
+                vec3 L = normalize(lightPos - P);  // Light direction
+                vec3 E = normalize(-W);  // View direction
+                vec3 R = reflect(-L, N);  // Reflection direction
+
+                // Diffuse and specular contributions
+                float radiusFactor = lightRadius  * 1. / distance(P, lightPos) ;
+                vec3 diffuse = lightColor * max(dot(N, L), 0.0) * radiusFactor;
+                vec3 specular = vec3(1.0) * pow(max(dot(R, E), 0.0), 64.0) * radiusFactor;
+
+                sphereColor = diffuse + specular + vec3(0.2, 0.2, 0.2); 
+            }
+        }
+    }
+
+    if (hitSphere) {
+        finalColor = sphereColor;
+    }
+
+    gl_FragColor = vec4(finalColor, 1.0);  // Set the final fragment color
+}
+`;
+
+
+
+// WAIT 100 MSECS BEFORE STARTING UP
+
+setTimeout(() => {
+   let gl = start_gl(canvas1, meshData, vertexSize, vertexShader, fragmentShader);
+
+   // FIND LOCATIONS IN GPU PROGRAM OF UNIFORM VARIABLES
+
+   let uFL       = gl.getUniformLocation(gl.program, "uFL"      ); 
+   let uTime     = gl.getUniformLocation(gl.program, "uTime"    );
+   let uCursor   = gl.getUniformLocation(gl.program, "uCursor"  ); 
+   let uSpheres  = gl.getUniformLocation(gl.program, "uSpheres" ); 
+
+
+   let startTime = Date.now() / 1000;
+
+   setInterval(() => {
+      // SET ALL UNIFORM VARIABLES
+      let time = Date.now() / 1000 - startTime;
+      gl.uniform1f(uTime, time);  
+      gl.uniform3fv(uCursor, cursor);   
+      gl.uniform1f(uFL, 3); 
+
+      let data = [];
+
+    // NONLIGHT BALL （centre of the canvas)
+    let x0 = 0.0;  
+    let y0 = 0.0;  
+    let z0 = -2.5;  // Fixed z position
+    data.push(x0, y0, z0, 0.08); 
+
+    // LIGHT BALL
+    let x1 = cursor[0];  
+    let y1 = cursor[1];  
+    let z1 = -2;  
+    data.push(x1, y1, z1, 0.07); 
+
+
+    gl.uniform4fv(uSpheres, data); // uSphere data is defined by "data"
+
+    for (let n = 0 ; n < meshData.length ; n++) {
+        let mesh = meshData[n].mesh;
+        gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+        gl.drawArrays(meshData[n].type ? gl.TRIANGLE_STRIP : gl.TRIANGLES, 0, mesh.length / vertexSize);
+    }
+
+    }, 30); 
+   });
+
+</script>
+</body>
+</html>

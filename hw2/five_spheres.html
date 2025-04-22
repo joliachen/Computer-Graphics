@@ -1,0 +1,217 @@
+<body bgcolor=black>
+<center>
+<canvas id='canvas1' width=800 height=800></canvas>
+
+<script>
+
+// INITIALIZE GPU PROGRAM
+
+let start_gl = (canvas, meshData, vertexSize, vertexShader, fragmentShader) => {
+   let gl = canvas.getContext("webgl"); // This gets the WebGL rendering context, allowing us to use WebGL functions to render graphics.
+   let program = gl.createProgram(); // gl.createProgram() 返回一个 WebGLProgram 对象，用来管理和链接 WebGL 的着色器（vertex shader 和 fragment shader）
+   gl.program = program; // gl.program 是你自己定义的属性，而不是 WebGL 的内置属性。
+   let addshader = (type, src) => {
+      let shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (! gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+         throw "Cannot compile shader:\n\n" + gl.getShaderInfoLog(shader);
+      gl.attachShader(program, shader); // Once the shader is compiled, it’s attached to the WebGL program object using attachShader(). A WebGL program is essentially a container that holds both the vertex and fragment shaders.
+   };
+   addshader(gl.VERTEX_SHADER  , vertexShader  ); // type, src
+   addshader(gl.FRAGMENT_SHADER, fragmentShader); 
+   gl.linkProgram(program); // program will link the shaders together
+//  makes sure that the outputs of the vertex shader match the inputs of the fragment shader. For example:
+// If the vertex shader outputs a variable like varying vec3 vPos;, the fragment shader must declare an input like varying vec3 vPos; to receive it.
+
+   if (! gl.getProgramParameter(program, gl.LINK_STATUS))
+      throw "Could not link the shader program!";
+   gl.useProgram(program); // activate the shader program 
+   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); // Binds a buffer for storing vertex data.
+   gl.enable(gl.DEPTH_TEST);
+   gl.depthFunc(gl.LEQUAL); //  Sets the depth test to accept fragments that are closer or equal in depth to what’s already in the frame buffer.
+   
+   let vertexAttribute = (name, size, position) => { // size:  number of components for each vertex attribute (e.g., 3 for 3D position).
+      let attr = gl.getAttribLocation(program, name); // Finds the location of a specific attribute in the shader (in this case, aPos).
+      gl.enableVertexAttribArray(attr);
+      gl.vertexAttribPointer(attr, size, gl.FLOAT, false, vertexSize * 4, position * 4);  //Specifies how the attribute will be read from the buffer.
+   }
+   vertexAttribute('aPos', 3, 0);
+   return gl;
+}
+
+// LOGIC TO TRACK THE CURSOR
+
+let r = canvas1.getBoundingClientRect(), cursor = [0,0,0]; // getBoundingClientRect: Retrieves the position of the canvas in the browser window.
+let setCursor = (e, z) => cursor = [ (e.clientX - r.left) / canvas1.width * 2 - 1,
+                                     1 - (e.clientY - r.top) / canvas1.height * 2,
+                                     z !== undefined ? z : cursor[2] ];
+                                    //  converts the mouse position into WebGL coordinates, which range from -1 to 1. 
+                                    //  Mouse clicks are captured with onmousedown and onmouseup, and onmousemove updates the cursor's position
+canvas1.onmousedown = e => setCursor(e, 1); // on mouse down
+canvas1.onmousemove = e => setCursor(e,  );
+canvas1.onmouseup   = e => setCursor(e, 0);
+
+// TRIANGLE DATA (IN THIS CASE, ONE SQUARE)
+
+let meshData = [
+   { type: 1, mesh: new Float32Array([ -1,1,0, 1,1,0, -1,-1,0, 1,-1,0 ]) },
+];  // Defines the geometry of a square (which is made of two triangles) on the screen. It provides four vertices (in 3D) of a square:
+//(-1, 1, 0), (1, 1, 0), (-1, -1, 0), and (1, -1, 0)
+// This square is drawn using gl.TRIANGLE_STRIP, which connects the vertices in a strip to form triangles, so the square will be drawn 
+// as two connected triangles.
+
+const NSPHERES = 5;
+
+// VERTEX AND FRAGMENT SHADERS
+
+let vertexSize = 3;
+let vertexShader = `
+   attribute vec3 aPos; //  (x, y, z). These properties are stored in buffers and are passed to the vertex shader as attributes. 
+   varying   vec3 vPos; // pass the vertex position (aPos) from the vertex shader to the fragment shader
+   void main() {
+      gl_Position = vec4(aPos, 1.0); // The final position of the vertex in screen space. It's a vec4 because OpenGL requires 4D homogeneous coordinates (where the fourth component is 1).
+      vPos = aPos; // from vertex shader to fragment shader
+   }
+`;
+let fragmentShader = ` // decide the final color of a fragment. 主要逻辑是基于光线追踪(Ray Tracing)来计算光线与场景中球体的相交情况。
+   precision mediump float;
+   uniform float uTime, uFL; // These are uniforms, which are values passed from the CPU to the GPU that remain constant across all fragments (e.g., the time and focal length of the virtual camera)
+   uniform vec3  uCursor;
+   uniform vec4  uSpheres[`+NSPHERES+`]; // uSpheres 是一个 WebGL 的 uniform 变量，假设 NSPHERES = 5, 那么 uSpheres 是一个长度为 5 的 vec4 数组
+   varying vec3  vPos; // The position of the fragment, passed from the vertex shader. 
+
+   vec3 bgColor = vec3(0.,0.,.05);
+
+   // Calculate whether there is intersection of ray and sphere, whether we can view the sphere
+   float raySphere(vec3 V, vec3 W, vec3 C, float r) { // V: original of the ray    W: the direction of the ray
+      V -= C;
+      float VV = dot(V,V);
+      float VW = dot(V,W);
+      float d = VW * VW - (VV - r*r); // delta 
+      if (d > 0.) // the ray hits the sphere
+         return -VW - sqrt(d);
+      return -1.;
+   }
+
+   //执行场景渲染，包括光线追踪、阴影检测和最终颜色计算。
+   void main(void) {
+
+      // SET BACKGROUND COLOR
+
+      vec3 color = bgColor;
+
+      // FORM THE RAY FOR THIS PIXEL
+
+      vec3 V = vec3(0.); // position of the camera
+      vec3 W = normalize(vec3(vPos.xy,-uFL)); // direction from camera to
+
+      vec3 L = normalize(vec3(1.)); # vector: light source  and the hitpoint (the point where camera ray hits the sphere)
+
+      vec3 material, highlight;
+      float power;
+
+      if (uCursor.x < -.3) {
+	 material = vec3(.5,.17,0.);    // GOLD
+         highlight = 1.2 * material;
+	 power = 8.;
+      }
+      else if (uCursor.x > .3) {
+	 material = vec3(.4,.05,.0);    // COPPER
+         highlight = 1.2 * material;
+	 power = 6.;
+      }
+      else {
+         material = vec3(1.,0.,0.);    // RED PLASTIC
+	 highlight = vec3(1.);
+         power = 20.;
+      }
+
+      float tMin = 1000.;
+      for (int i = 0 ; i < ` + NSPHERES + ` ; i++) {
+         vec3  C = uSpheres[i].xyz;
+         float r = uSpheres[i].w;
+         float t = raySphere(V, W, C, r);
+         if (t > 0. && t < tMin) { // if the t intersects with the sphere, which means the camera can see the point on the sphere
+	    tMin = t;
+            vec3 P = V + t * W; // calculate the intersection point
+	    vec3 N = normalize(P - C); // is the normal vector at the intersection point
+	    color = .2 * material;
+
+	    bool inShadow = false;
+	    for (int j = 0 ; j < ` + NSPHERES + ` ; j++)
+	       if (j != i) {
+                  vec3  C = uSpheres[j].xyz;
+                  float r = uSpheres[j].w;
+                  if (raySphere(P, L, C, r) > 0.) # 看
+	             inShadow = true;
+	       }
+
+	    if (! inShadow) {
+	       vec3 d = material * max(0., dot(N,L));
+	       vec3 E = vec3(0.,0.,1.);
+	       vec3 R = W - 2. * N * dot(N, W);
+	       vec3 s = highlight * pow(max(0., dot(R, L)), power); # 计算光源在这个hitpoint的漫反射
+               color += d + s;
+            }
+         }
+      }
+
+      gl_FragColor = vec4(sqrt(color), 1.);
+   }
+`;
+
+// WAIT 100 MSECS BEFORE STARTING UP
+
+setTimeout(() => {
+   let gl = start_gl(canvas1, meshData, vertexSize, vertexShader, fragmentShader);
+
+   // FIND LOCATIONS IN GPU PROGRAM OF UNIFORM VARIABLES
+// once you define uniform value in shaders, you still need to get its location explicitly
+
+// getUniformLocation(program, name): name: This is the name of the uniform variable as it is declared in the GLSL shader code. This name must match exactly the name used in your vertex or fragment shader.
+   let uFL       = gl.getUniformLocation(gl.program, "uFL"      );  // uniform focal length (camera perspective)
+   let uTime     = gl.getUniformLocation(gl.program, "uTime"    );
+   let uCursor   = gl.getUniformLocation(gl.program, "uCursor"  ); 
+   let uSpheres  = gl.getUniformLocation(gl.program, "uSpheres" ); 
+
+   // ANIMATE AND RENDER EACH ANIMATION FRAME
+
+   let startTime = Date.now() / 1000;
+   setInterval(() => {
+      
+      // SET ALL UNIFORM VARIABLES
+
+      // gl.uniformX(location, value): transfer data from CPU to GPU
+      // location:  The location of the uniform variable in the shader. This is typically obtained using gl.getUniformLocation.
+      // X: tell webGL what typle of value you are storing
+//       let location = gl.getUniformLocation(program, "uColor");
+//       let color = [1.0, 0.0, 0.0, 1.0];  // RGBA red color
+//       gl.uniform4fv(location, color);  // Set uniform to vec4(1.0, 0.0, 0.0, 1.0)
+
+
+      let time = Date.now() / 1000 - startTime;
+      gl.uniform1f(uTime, time); // transfer the value into gpu
+      gl.uniform3fv(uCursor, cursor);
+      gl.uniform1f(uFL, 3);
+
+      let data = [];
+      for (let n = 0 ; n < NSPHERES ; n++) {
+         let theta = time + 2 * Math.PI * n / NSPHERES;
+         let c = .15 * Math.cos(theta);
+         let s = .15 * Math.sin(theta);
+         data.push(c, 0, -1 + s, -.08);
+      }
+      gl.uniform4fv(uSpheres, data); // transfer data from cpu to gpu
+
+      // RENDER THE FRAME
+
+      for (let n = 0 ; n < meshData.length ; n++) {
+         let mesh = meshData[n].mesh;
+         gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+         gl.drawArrays(meshData[n].type ? gl.TRIANGLE_STRIP : gl.TRIANGLES, 0, mesh.length / vertexSize);
+      }
+   }, 30);
+}, 100);
+</script>
+
