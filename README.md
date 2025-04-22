@@ -30,6 +30,8 @@ You can view the assignments in the following ways:
 ## Final Project
 
 - [Blossom Chaos](https://i6.cims.nyu.edu/~zc2745/graphics/final_project/blossom_chaos.html)
+- <img width="938" alt="Screenshot 2025-04-22 at 15 46 51" src="https://github.com/user-attachments/assets/8c5e1172-1266-4070-b94a-4fc395ccf371" />
+
 
 ## Notes
 - For any questions or feedback, feel free to reach out at `zc2745@nyu.edu`.
