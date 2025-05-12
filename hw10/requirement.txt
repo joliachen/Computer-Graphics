@@ -1,0 +1,27 @@
+
+For this assignment, I would like you to create an animated scene that
+builds from the code that I have attached. Your scene should include the
+following elements. All of the elements described below are already present
+in my example scene in some simple form. You should *not* just replicated
+them. Instead, you should build something different and creative.
+
+(1) Create at least one procedurally defined material in your index.html file, 
+using the same addMaterial() method that I used to define the fog texture in
+this example and the woodgrain texture from last week.
+
+(2) Create your own example of using 2 link IK. For example, you could
+implement a "pick and place" scene, in which a person or a robot reaches
+then moves then places objects. Or you might make a walking person or
+4 or 8 legged walking creature. Use your imagination.
+
+(3) Use the aim() method somewhere in your scene to orient geometric parts
+(maybe arms or legs).
+
+(4) Use at least one spring. For example, if you are building a pick and
+place scene, the object being picked up could respond to being moved in
+some springy way.
+
+(5) Make sure your scene can runs in stereo on your phone, using the library
+that I have provided. You might try creating a scene that has things happening
+in all around the viewer, so that someone looking at your scene will enjoy
+looking around in different directions.

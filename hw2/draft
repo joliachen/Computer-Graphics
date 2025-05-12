@@ -1,0 +1,27 @@
+      // Function to generate Perlin-like noise
+
+       float noise(vec3 point) { float r = 0.; for (int i=0;i<16;i++) {
+        vec3 D, p = point + mod(vec3(i,i/4,i/8) , vec3(4.0,2.0,2.0)) +
+            1.7*sin(vec3(i,5*i,8*i)), C=floor(p), P=p-C-.5, A=abs(P);
+        C += mod(C.x+C.y+C.z,2.) * step(max(A.yzx,A.zxy),A) * sign(P);
+        D=34.*sin(987.*float(i)+876.*C+76.*C.yzx+765.*C.zxy);P=p-C-.5;
+        r+=sin(6.3*dot(P,fract(D)-.5))*pow(max(0.,1.-2.*dot(P,P)),4.);
+        } return .5 * sin(r); }
+
+        float turbulence(vec3 P) {
+        float f = 0., s = 1.;
+        for (int i = 0 ; i < 9 ; i++) {
+            f += abs(noise(s * P)) / s;
+            s *= 2.;
+            P = vec3(.866*P.x + .5*P.z, P.y + 100., -.5*P.x + .866*P.z);
+        }
+        return f;
+        }
+
+       vec3 getbackgroundColor(vec3 cursor, vec3 pos){
+        if cursor.x < -0.3:
+            vec3 bgColor = mix( (0.149,0.141,0.912),  (1.000,0.833,0.224), abs(sin(u_time)));
+        else:
+            vec3 bgColor = mix( (0.149,0.141,0.912),  (1.000,0.833,0.224), abs(sin(u_time)));
+        vec3 nebula =  turbulence(pos + uTime * 0.05);
+        return bgColor + nebula;  }

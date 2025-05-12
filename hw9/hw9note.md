@@ -1,0 +1,3 @@
+# Splines
+
+degrees of freedom
